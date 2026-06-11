@@ -1,23 +1,36 @@
 {
   "expo": {
-    "name": "recetaime",
+    "name": "Receta Ime",
     "slug": "recetaime",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "recetaime",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "bundleIdentifier": "com.muiz.recetaime",
+      "icon": "./assets/images/icon.png",
+      "usesAppleSignIn": true,
+      "supportsTablet": false,
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "infoPlist": {
+        "NSCameraUsageDescription": "Receta Ime uses your camera to scan handwritten or printed recipes.",
+        "NSPhotoLibraryUsageDescription": "Receta Ime uses your photos to import recipe screenshots and saved images.",
+        "NSPhotoLibraryAddUsageDescription": "Receta Ime may save recipe images you create or edit."
+      }
     },
     "android": {
+      "package": "com.muiz.recetaime",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#FAF6EA",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": ["CAMERA", "READ_MEDIA_IMAGES", "POST_NOTIFICATIONS"]
     },
     "web": {
       "output": "static",
@@ -28,17 +41,69 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
-          "android": {
-            "image": "./assets/images/splash-icon.png",
-            "imageWidth": 76
-          }
+          "backgroundColor": "#FAF6EA",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 96,
+          "resizeMode": "contain"
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": true,
+          "faceIDPermission": "Allow Receta Ime to use Face ID."
+        }
+      ],
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/Satoshi-Regular.otf",
+            "./assets/fonts/Satoshi-Medium.otf",
+            "./assets/fonts/Satoshi-Bold.otf"
+          ]
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#E94B35"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Receta Ime uses your photos to import recipe screenshots and saved recipe images.",
+          "cameraPermission": "Receta Ime uses your camera to scan handwritten or printed recipes."
+        }
+      ],
+      "expo-document-picker",
+      "expo-apple-authentication",
+      "expo-web-browser",
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsText": true,
+            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+            "NSExtensionActivationSupportsWebPageWithMaxCount": 1,
+            "NSExtensionActivationSupportsImageWithMaxCount": 1,
+            "NSExtensionActivationSupportsMovieWithMaxCount": 1
+          },
+          "androidIntentFilters": ["text/*", "image/*", "video/*"],
+          "androidMultiIntentFilters": ["image/*"]
         }
       ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "a07b153b-fe8e-4f5f-8948-027c7b612bcb"
+      }
     }
   }
 }
