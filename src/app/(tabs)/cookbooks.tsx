@@ -1,9 +1,15 @@
-import { IconBook, IconChefHat } from "@tabler/icons-react-native";
+import {
+  IconBook,
+  IconChefHat,
+  IconChevronRight,
+  IconPlus,
+} from "@tabler/icons-react-native";
 import { useQuery } from "convex/react";
 import { useRouter } from "expo-router";
-import { Pressable, ScrollView, StyleSheet } from "react-native";
+import { Pressable, StyleSheet } from "react-native";
 
 import { EmptyTabState } from "@/components/tabs/empty-tab-state";
+import { TabScreen } from "@/components/tabs/tab-screen";
 import { TabScreenHeader } from "@/components/tabs/tab-screen-header";
 import { ThemedCard } from "@/components/ui/themed-card";
 import { ThemedText } from "@/components/ui/themed-text";
@@ -16,8 +22,11 @@ import { api } from "../../../convex/_generated/api";
 
 type RecipeLike = Partial<GuestRecipe> & {
   _id?: string;
+  localId?: string;
+  createdAt?: number;
   title: string;
-  sourceType: string;
+  description?: string;
+  sourceType?: string;
   ingredients?: { text: string }[];
   steps?: string[];
 };
@@ -34,109 +43,197 @@ export default function CookbooksScreen() {
     isAuthenticated && token ? { token } : "skip",
   );
 
-  const recipes = isAuthenticated ? (accountRecipes ?? []) : guestRecipes;
+  const isLoading = isAuthenticated && token && accountRecipes === undefined;
 
-  const openImport = () => {
+  const recipes = (
+    isAuthenticated ? (accountRecipes ?? []) : guestRecipes
+  ) as RecipeLike[];
+
+  const openRecipe = (recipe: RecipeLike) => {
+    const id = getRecipeId(recipe);
+
+    if (!id) return;
+
     router.push({
-      pathname: "/import-recipe",
-      params: { mode: "link" },
+      pathname: "/recipe/[id]",
+      params: {
+        id,
+        source: isAuthenticated ? "account" : "guest",
+      },
     } as any);
   };
 
   return (
-    <ThemedView style={styles.container}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.content}
-      >
-        <TabScreenHeader
-          title="Recetat e tua"
-          subtitle="Këtu do të shfaqen recetat që ruan."
-        />
+    <TabScreen>
+      <TabScreenHeader
+        title="Recetat"
+        subtitle="Recetat e tua të ruajtura, të importuara dhe gati për gatim."
+      />
 
-        {recipes.length > 0 ? (
-          <ThemedView transparent style={styles.list}>
-            {recipes.map((recipe) => (
-              <RecipeCard
-                key={getRecipeKey(recipe)}
-                recipe={recipe as RecipeLike}
-              />
-            ))}
-          </ThemedView>
-        ) : (
+      {isLoading ? (
+        <ThemedView transparent style={styles.loadingState}>
+          <ThemedText type="body" themeColor="textSecondary">
+            Duke i ngarkuar recetat...
+          </ThemedText>
+        </ThemedView>
+      ) : recipes.length > 0 ? (
+        <ThemedView transparent style={styles.recipeList}>
+          {recipes.map((recipe) => (
+            <RecipeCard
+              key={getRecipeKey(recipe)}
+              recipe={recipe}
+              onPress={() => openRecipe(recipe)}
+            />
+          ))}
+        </ThemedView>
+      ) : (
+        <>
           <EmptyTabState
             icon={
               <IconChefHat size={42} color={theme.primary} strokeWidth={2.1} />
             }
-            title="Ruaje recetën e parë"
-            subtitle="Shto një link, foto, screenshot ose recetë nga WhatsApp."
-            actionLabel="Shto recetë"
-            onActionPress={openImport}
+            title="Asnjë recetë ende"
+            subtitle="Shto recetën e parë nga link, foto, screenshot ose tekst."
           />
-        )}
 
-        <ThemedView transparent style={styles.tipRow}>
-          <IconBook size={18} color={theme.textSecondary} strokeWidth={2.1} />
-          <ThemedText
-            type="small"
-            themeColor="textSecondary"
-            style={styles.tipText}
+          <Pressable
+            onPress={() =>
+              router.push({
+                pathname: "/import-recipe",
+                params: { mode: "link" },
+              } as any)
+            }
+            style={({ pressed }) => [
+              styles.primaryAction,
+              {
+                backgroundColor: theme.primary,
+                opacity: pressed ? 0.86 : 1,
+              },
+            ]}
           >
-            Recetat ruhen si karta të pastra me përbërës dhe hapa.
-          </ThemedText>
-        </ThemedView>
-      </ScrollView>
-    </ThemedView>
+            <IconPlus size={21} color="#FFFFFF" strokeWidth={2.6} />
+            <ThemedText style={styles.primaryActionText}>
+              Shto recetë
+            </ThemedText>
+          </Pressable>
+        </>
+      )}
+
+      <ThemedCard style={styles.tipCard}>
+        <IconBook size={22} color={theme.textSecondary} strokeWidth={2.1} />
+
+        <ThemedText
+          type="small"
+          themeColor="textSecondary"
+          style={styles.tipText}
+        >
+          Recetat ruhen si karta të pastra me përbërës, hapa dhe burim. Së
+          shpejti mund t’i ndash edhe në koleksione.
+        </ThemedText>
+      </ThemedCard>
+    </TabScreen>
   );
 }
 
-function RecipeCard({ recipe }: { recipe: RecipeLike }) {
+function RecipeCard({
+  recipe,
+  onPress,
+}: {
+  recipe: RecipeLike;
+  onPress: () => void;
+}) {
   const theme = useTheme();
 
-  const ingredientsCount = recipe.ingredients?.length ?? 0;
-  const stepsCount = recipe.steps?.length ?? 0;
+  const ingredientCount = recipe.ingredients?.length ?? 0;
+  const stepCount = recipe.steps?.length ?? 0;
 
   return (
-    <Pressable style={({ pressed }) => [{ opacity: pressed ? 0.82 : 1 }]}>
-      <ThemedCard style={styles.recipeCard}>
-        <ThemedView transparent style={styles.recipeRow}>
-          <ThemedView
-            style={[styles.recipeIcon, { backgroundColor: theme.primarySoft }]}
-          >
-            <IconChefHat size={23} color={theme.primary} strokeWidth={2.15} />
-          </ThemedView>
-
-          <ThemedView transparent style={styles.recipeText}>
-            <ThemedText
-              type="smallBold"
-              style={styles.recipeTitle}
-              numberOfLines={1}
+    <Pressable onPress={onPress}>
+      {({ pressed }) => (
+        <ThemedCard
+          style={[
+            styles.recipeCard,
+            {
+              opacity: pressed ? 0.82 : 1,
+              transform: [{ scale: pressed ? 0.99 : 1 }],
+            },
+          ]}
+        >
+          <ThemedView transparent style={styles.recipeRow}>
+            <ThemedView
+              style={[
+                styles.recipeIcon,
+                { backgroundColor: theme.primarySoft },
+              ]}
             >
-              {recipe.title?.trim() || "Recetë e re"}
-            </ThemedText>
+              <IconChefHat size={24} color={theme.primary} strokeWidth={2.1} />
+            </ThemedView>
 
-            <ThemedText
-              type="small"
-              themeColor="textSecondary"
-              style={styles.recipeMeta}
-              numberOfLines={1}
+            <ThemedView transparent style={styles.recipeCopy}>
+              <ThemedText
+                type="smallBold"
+                style={styles.recipeTitle}
+                numberOfLines={1}
+              >
+                {recipe.title || "Recetë e re"}
+              </ThemedText>
+
+              {recipe.description ? (
+                <ThemedText
+                  type="small"
+                  themeColor="textSecondary"
+                  numberOfLines={1}
+                >
+                  {recipe.description}
+                </ThemedText>
+              ) : (
+                <ThemedText
+                  type="small"
+                  themeColor="textSecondary"
+                  numberOfLines={1}
+                >
+                  {sourceLabel(recipe.sourceType)} · {ingredientCount} përbërës
+                  · {stepCount} hapa
+                </ThemedText>
+              )}
+
+              {recipe.description ? (
+                <ThemedText
+                  type="small"
+                  themeColor="textTertiary"
+                  numberOfLines={1}
+                >
+                  {sourceLabel(recipe.sourceType)} · {ingredientCount} përbërës
+                  · {stepCount} hapa
+                </ThemedText>
+              ) : null}
+            </ThemedView>
+
+            <ThemedView
+              transparent
+              style={[styles.chevron, { backgroundColor: theme.surfaceMuted }]}
             >
-              {sourceLabel(recipe.sourceType)} • {ingredientsCount} përbërës •{" "}
-              {stepsCount} hapa
-            </ThemedText>
+              <IconChevronRight
+                size={18}
+                color={theme.textSecondary}
+                strokeWidth={2.3}
+              />
+            </ThemedView>
           </ThemedView>
-        </ThemedView>
-      </ThemedCard>
+        </ThemedCard>
+      )}
     </Pressable>
   );
 }
 
-function getRecipeKey(recipe: {
-  _id?: string;
-  localId?: string;
-  title?: string;
-}) {
-  return recipe._id ?? recipe.localId ?? recipe.title ?? String(Math.random());
+function getRecipeId(recipe: RecipeLike) {
+  return recipe._id ?? recipe.localId;
+}
+
+function getRecipeKey(recipe: RecipeLike) {
+  return (
+    recipe._id ?? recipe.localId ?? `${recipe.title}-${recipe.createdAt ?? ""}`
+  );
 }
 
 function sourceLabel(sourceType?: string) {
@@ -152,29 +249,28 @@ function sourceLabel(sourceType?: string) {
     case "photo":
       return "Foto";
     case "manual":
-      return "Manual";
+      return "Tekst";
     case "web":
       return "Web";
     default:
-      return "Burim";
+      return "Import";
   }
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  loadingState: {
+    marginTop: Spacing.xxl,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.xxl,
   },
-  content: {
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.xxxl,
-    paddingBottom: 140,
-  },
-  list: {
-    marginTop: Spacing.xl,
+  recipeList: {
+    marginTop: Spacing.xxl,
     gap: Spacing.md,
   },
   recipeCard: {
     padding: Spacing.md,
+    borderRadius: Radius.xl,
   },
   recipeRow: {
     flexDirection: "row",
@@ -188,7 +284,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  recipeText: {
+  recipeCopy: {
     flex: 1,
     minWidth: 0,
     gap: 2,
@@ -197,15 +293,35 @@ const styles = StyleSheet.create({
     fontSize: 17,
     lineHeight: 22,
   },
-  recipeMeta: {
-    fontSize: 13,
-    lineHeight: 18,
+  chevron: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  tipRow: {
+  primaryAction: {
+    marginTop: Spacing.lg,
+    height: 54,
+    borderRadius: Radius.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.sm,
+  },
+  primaryActionText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "800",
+  },
+  tipCard: {
     marginTop: Spacing.xl,
+    padding: Spacing.lg,
+    borderRadius: Radius.xl,
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: Spacing.sm,
+    gap: Spacing.md,
   },
   tipText: {
     flex: 1,

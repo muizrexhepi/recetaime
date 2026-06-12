@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   title: {
-    fontFamily: Fonts.sans,
+    fontFamily: Fonts.bold,
     fontSize: 17,
     lineHeight: 22,
     fontWeight: "700",

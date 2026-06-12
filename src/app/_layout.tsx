@@ -8,9 +8,10 @@ import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
-import { Colors } from "@/constants/theme";
+import { colors, Colors, Fonts } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { normalizeImportDraft } from "@/lib/recipe-import";
+import { getShareIntentMeta } from "@/lib/share-intent-meta";
 import { AuthProvider, useAuth } from "@/providers/auth-provider";
 import { ConvexProvider } from "@/providers/convex-provider";
 import { useGuestStore } from "@/stores/guest-store";
@@ -45,14 +46,23 @@ function RootNavigation() {
 
     const firstFile = shareIntent.files?.[0];
     const isImage = firstFile?.mimeType?.startsWith("image/");
-    const value = shareIntent.webUrl ?? shareIntent.text ?? "";
+    const meta = getShareIntentMeta(shareIntent.meta);
+
+    const value = [shareIntent.webUrl, shareIntent.text]
+      .map((part) => part?.trim())
+      .filter(Boolean)
+      .filter((part, index, parts) => parts.indexOf(part) === index)
+      .join("\n\n");
 
     setImportDraft({
       ...normalizeImportDraft({
         mode: isImage ? "photo" : "share",
         value,
         imageUri: isImage ? firstFile?.path : undefined,
-        metaTitle: shareIntent.meta?.title,
+        metaTitle: meta.title,
+        metaDescription: meta.description,
+        metaCaption: meta.caption,
+        metaHtmlText: meta.htmlText,
       }),
       files: shareIntent.files ?? undefined,
     });
@@ -70,7 +80,7 @@ function RootNavigation() {
     setImportDraft,
     resetShareIntent,
     shareIntent.files,
-    shareIntent.meta?.title,
+    shareIntent.meta,
     shareIntent.text,
     shareIntent.webUrl,
   ]);
@@ -136,7 +146,58 @@ function RootNavigation() {
           backgroundColor: theme.background,
         },
       }}
-    />
+    >
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+
+      <Stack.Screen
+        name="(modals)"
+        options={{ headerShown: false, presentation: "modal" }}
+      />
+
+      <Stack.Screen name="import-recipe" options={{ headerShown: false }} />
+
+      <Stack.Screen
+        name="recipe/[id]"
+        options={{
+          headerShown: true,
+          title: "Receta",
+          headerBackTitle: "Recetat",
+          headerShadowVisible: false,
+          headerTintColor: colors.textPrimary,
+          headerStyle: {
+            backgroundColor: colors.background,
+          },
+          headerTitleStyle: {
+            fontFamily: Fonts.bold,
+            fontSize: 17,
+          },
+          contentStyle: {
+            backgroundColor: colors.background,
+          },
+        }}
+      />
+
+      <Stack.Screen
+        name="settings"
+        options={{
+          headerShown: true,
+          title: "Cilësimet",
+          headerBackTitle: "Prapa",
+          headerShadowVisible: false,
+          headerTintColor: colors.textPrimary,
+          headerStyle: {
+            backgroundColor: colors.background,
+          },
+          headerTitleStyle: {
+            fontFamily: Fonts.bold,
+            fontSize: 17,
+          },
+          contentStyle: {
+            backgroundColor: colors.background,
+          },
+        }}
+      />
+    </Stack>
   );
 }
 
@@ -165,7 +226,13 @@ export default function RootLayout() {
   }
 
   return (
-    <ShareIntentProvider options={{ scheme: "recetaime" }}>
+    <ShareIntentProvider
+      options={{
+        scheme: "recetaime",
+        resetOnBackground: false,
+        debug: __DEV__,
+      }}
+    >
       <GestureHandlerRootView style={{ flex: 1 }}>
         <ConvexProvider>
           <AuthProvider>

@@ -83,6 +83,10 @@
       [
         "expo-share-intent",
         {
+          "iosShareExtensionName": "Import to Receta Ime",
+          "iosAppGroupIdentifier": "group.com.muiz.recetaime.share",
+          "disableExperimental": true,
+          "iosHideView": false,
           "iosActivationRules": {
             "NSExtensionActivationSupportsText": true,
             "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
@@ -90,10 +94,12 @@
             "NSExtensionActivationSupportsImageWithMaxCount": 1,
             "NSExtensionActivationSupportsMovieWithMaxCount": 1
           },
+          "preprocessorInjectJS": "metas['description'] = metas['description'] || document.querySelector('meta[property=\"og:description\"]')?.getAttribute('content') || ''; metas['og:description'] = metas['og:description'] || metas['description']; metas['og:title'] = metas['og:title'] || document.querySelector('meta[property=\"og:title\"]')?.getAttribute('content') || document.title || ''; metas['articleText'] = Array.from(document.querySelectorAll('article, main, [role=\"main\"], h1, h2, p')).map((node) => node.innerText || node.textContent || '').filter(Boolean).join('\\n').slice(0, 12000); metas['bodyText'] = (document.body?.innerText || '').slice(0, 12000);",
           "androidIntentFilters": ["text/*", "image/*", "video/*"],
           "androidMultiIntentFilters": ["image/*"]
         }
-      ]
+      ],
+      "./plugins/with-modular-headers"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -102,7 +108,24 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "a07b153b-fe8e-4f5f-8948-027c7b612bcb"
+        "projectId": "a07b153b-fe8e-4f5f-8948-027c7b612bcb",
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "targetName": "ImporttoRecetaIme",
+                  "bundleIdentifier": "com.muiz.recetaime.share-extension",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.com.muiz.recetaime.share"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
       }
     }
   }

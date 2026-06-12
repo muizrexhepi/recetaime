@@ -13,6 +13,7 @@ import { useTheme } from "@/hooks/use-theme";
 type CardVariant =
   | "default"
   | "elevated"
+  | "outline"
   | "ghost"
   | "highlight"
   | "selected"
@@ -26,6 +27,7 @@ type ThemedCardProps = {
   pressable?: boolean;
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
+  contentStyle?: StyleProp<ViewStyle>;
   children: React.ReactNode;
 };
 
@@ -49,6 +51,7 @@ export function ThemedCard({
   pressable,
   onPress,
   style,
+  contentStyle,
   children,
 }: ThemedCardProps) {
   const theme = useTheme();
@@ -57,10 +60,12 @@ export function ThemedCard({
   const cardStyle = [
     styles.card,
     {
-      padding: paddingValue(padding),
+      padding: contentStyle ? 0 : paddingValue(padding),
       backgroundColor:
         variant === "ghost"
           ? "transparent"
+          : variant === "outline"
+            ? theme.surface
           : variant === "elevated"
             ? theme.surfaceElevated
             : variant === "highlight" || variant === "selected"
@@ -69,6 +74,8 @@ export function ThemedCard({
       borderColor:
         variant === "selected"
           ? theme.accentSoft
+          : variant === "outline"
+            ? theme.border
           : variant === "highlight"
             ? theme.accentSoft
             : theme.borderLight,
@@ -79,7 +86,11 @@ export function ThemedCard({
   ];
 
   if (!isPressable) {
-    return <View style={cardStyle}>{children}</View>;
+    return (
+      <View style={cardStyle}>
+        {contentStyle ? <View style={contentStyle}>{children}</View> : children}
+      </View>
+    );
   }
 
   return (
@@ -93,7 +104,7 @@ export function ThemedCard({
         },
       ]}
     >
-      {children}
+      {contentStyle ? <View style={contentStyle}>{children}</View> : children}
     </Pressable>
   );
 }

@@ -1,7 +1,10 @@
 import { GuestRecipe } from "@/stores/guest-store";
 import {
+  Confidence,
   ImportDraft,
+  ImportMode,
   ImportSourceType,
+  ParsedRecipe,
 } from "@/stores/import-draft-store";
 
 type RecipeInput = Omit<
@@ -16,7 +19,7 @@ export function extractFirstUrl(value: string) {
 }
 
 export function detectSourceType(input?: string): ImportSourceType {
-  if (!input) return "manual";
+  if (!input?.trim()) return "manual";
 
   const normalized = input.toLowerCase();
 
@@ -34,167 +37,196 @@ export function detectSourceType(input?: string): ImportSourceType {
   return "manual";
 }
 
+export function normalizeRouteMode(mode?: string): ImportMode {
+  switch (mode) {
+    case "share":
+    case "link":
+    case "photo":
+    case "text":
+    case "manual":
+    case "web":
+      return mode;
+    case "social":
+      return "link";
+    default:
+      return "link";
+  }
+}
+
 export function normalizeImportDraft(args: {
-  mode: ImportDraft["mode"];
+  mode?: ImportMode;
   value?: string;
   imageUri?: string;
   metaTitle?: string;
-}): Omit<ImportDraft, "id" | "receivedAt"> {
-  const sourceUrl = args.value ? extractFirstUrl(args.value) : undefined;
-  const sourceText =
-    args.value && args.value.trim().length > 0 ? args.value.trim() : undefined;
-  const imageUri = args.imageUri;
+  metaDescription?: string;
+  metaCaption?: string;
+  metaHtmlText?: string;
+  status?: ImportDraft["status"];
+}): ImportDraft {
+  const value = args.value?.trim();
+  const sourceUrl = value ? extractFirstUrl(value) : undefined;
+  const sourceText = value && value.length > 0 ? value : undefined;
+  const sourceType = args.imageUri
+    ? "photo"
+    : args.mode === "manual"
+      ? "manual"
+      : args.mode === "web"
+        ? "web"
+        : detectSourceType(sourceUrl ?? sourceText);
 
   return {
+    status: args.status ?? (sourceText || args.imageUri ? "receiving" : "idle"),
     mode: args.mode,
-    sourceType: imageUri
-      ? "photo"
-      : detectSourceType(sourceUrl ?? sourceText),
+    sourceType,
     ...(sourceUrl ? { sourceUrl } : {}),
     ...(sourceText ? { sourceText } : {}),
-    ...(imageUri ? { imageUri } : {}),
-    ...(args.metaTitle ? { metaTitle: args.metaTitle } : {}),
-    title: inferTitle({
-      sourceUrl,
-      sourceText,
-      metaTitle: args.metaTitle,
-      sourceType: imageUri ? "photo" : detectSourceType(sourceUrl ?? sourceText),
-    }),
+    ...(args.imageUri ? { imageUri: args.imageUri } : {}),
+    ...(args.metaTitle
+      ? {
+          rawContent: {
+            title: cleanTitle(args.metaTitle),
+            caption: args.metaCaption ?? sourceText,
+            ...(args.metaDescription ? { description: args.metaDescription } : {}),
+            ...(args.metaHtmlText ? { htmlText: args.metaHtmlText } : {}),
+          },
+        }
+      : sourceText || args.metaDescription || args.metaCaption || args.metaHtmlText
+        ? {
+            rawContent: {
+              ...(sourceText || args.metaCaption
+                ? { caption: args.metaCaption ?? sourceText }
+                : {}),
+              ...(args.metaDescription ? { description: args.metaDescription } : {}),
+              ...(args.metaHtmlText ? { htmlText: args.metaHtmlText } : {}),
+            },
+          }
+        : {}),
+    confidence: "low",
+    warnings: [],
   };
 }
 
-export function inferTitle(args: {
-  sourceUrl?: string;
-  sourceText?: string;
-  metaTitle?: string;
-  sourceType?: ImportSourceType;
-}) {
-  if (args.metaTitle?.trim()) return cleanTitle(args.metaTitle);
+export function getDraftInputValue(draft?: ImportDraft) {
+  return draft?.sourceUrl ?? draft?.sourceText ?? "";
+}
 
-  if (args.sourceText && !args.sourceUrl) {
-    const firstUsefulLine = args.sourceText
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .find((line) => line.length > 2 && !/^(përbërës|ingredients|hapat|steps|udhëzime)/i.test(line));
+export function getDisplayTitleForDraft(draft: ImportDraft) {
+  const rawTitle = draft.rawContent?.title?.trim();
+  if (rawTitle) return rawTitle;
 
-    if (firstUsefulLine) return cleanTitle(firstUsefulLine);
-  }
-
-  switch (args.sourceType) {
+  switch (draft.sourceType) {
     case "tiktok":
-      return "Recetë nga TikTok";
+      return "Link nga TikTok";
     case "instagram":
-      return "Recetë nga Instagram";
+      return "Link nga Instagram";
     case "youtube":
-      return "Recetë nga YouTube";
+      return "Link nga YouTube";
     case "whatsapp":
-      return "Recetë nga WhatsApp";
+      return "Tekst nga WhatsApp";
     case "photo":
-      return "Recetë nga foto";
+      return "Foto për import";
+    case "manual":
+      return "Recetë manuale";
     case "web":
-      return args.sourceUrl ? `Recetë nga ${domainFromUrl(args.sourceUrl)}` : "Recetë nga web";
     default:
-      return "Recetë e re";
+      return draft.sourceUrl ? domainFromUrl(draft.sourceUrl) : "Import i ri";
   }
 }
 
-export function buildRecipeFromDraft(draft: ImportDraft): RecipeInput {
-  const parsed = parseRecipeText(draft.sourceText ?? "");
+export function buildRecipeFromParsed(args: {
+  draft: ImportDraft;
+  parsedRecipe: ParsedRecipe;
+}): RecipeInput {
+  const { draft, parsedRecipe } = args;
 
   return {
-    title: cleanTitle(draft.title ?? inferTitle(draft)),
-    description: getDescriptionForDraft(draft),
+    title: cleanTitle(parsedRecipe.title),
+    ...(parsedRecipe.description?.trim()
+      ? { description: parsedRecipe.description.trim() }
+      : {}),
     sourceType: draft.sourceType,
     ...(draft.sourceUrl ? { sourceUrl: draft.sourceUrl } : {}),
     ...(draft.sourceText ? { sourceText: draft.sourceText } : {}),
     ...(draft.imageUri ? { imageUrl: draft.imageUri } : {}),
-    ingredients: parsed.ingredients,
-    steps: parsed.steps,
+    ingredients: parsedRecipe.ingredients.map((ingredient) => ({
+      ...ingredient,
+      text: ingredient.text.trim(),
+    })),
+    steps: parsedRecipe.steps.map((step) => step.trim()).filter(Boolean),
+    ...(parsedRecipe.servings ? { servings: parsedRecipe.servings } : {}),
+    ...(parsedRecipe.prepTimeMinutes
+      ? { prepTimeMinutes: parsedRecipe.prepTimeMinutes }
+      : {}),
+    ...(parsedRecipe.cookTimeMinutes
+      ? { cookTimeMinutes: parsedRecipe.cookTimeMinutes }
+      : {}),
     collectionIds: [],
     isFavorite: false,
   };
 }
 
-export function parseRecipeText(text: string): {
-  ingredients: RecipeInput["ingredients"];
-  steps: string[];
-} {
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  if (lines.length === 0) {
-    return {
+export function createEditableParsedRecipe(parsed?: ParsedRecipe): ParsedRecipe {
+  return (
+    parsed ?? {
+      title: "",
+      language: "unknown",
       ingredients: [],
       steps: [],
-    };
-  }
-
-  const ingredientHeadingIndex = lines.findIndex((line) =>
-    /^(përbërës|perberes|ingredients)\b/i.test(line),
+      tags: [],
+      ambiguityNotes: [],
+      needsUserReview: true,
+      confidence: "low",
+    }
   );
-  const stepHeadingIndex = lines.findIndex((line) =>
-    /^(hapat|përgatitja|pergatitja|udhëzime|udhezime|steps|method)\b/i.test(line),
-  );
-
-  const ingredientLines =
-    ingredientHeadingIndex >= 0
-      ? lines.slice(
-          ingredientHeadingIndex + 1,
-          stepHeadingIndex > ingredientHeadingIndex ? stepHeadingIndex : undefined,
-        )
-      : lines.filter(isLikelyIngredient);
-
-  const stepLines =
-    stepHeadingIndex >= 0
-      ? lines.slice(stepHeadingIndex + 1)
-      : lines.filter((line) => !isLikelyIngredient(line)).slice(1);
-
-  return {
-    ingredients: ingredientLines.slice(0, 40).map((line) => ({
-      text: stripListMarker(line),
-      confidence: "medium" as const,
-    })),
-    steps: stepLines.slice(0, 30).map(stripListMarker),
-  };
 }
 
-function isLikelyIngredient(line: string) {
+export function normalizeConfidence(value?: string): Confidence {
+  return value === "high" || value === "medium" || value === "low"
+    ? value
+    : "low";
+}
+
+export function hasEnoughRecipeContent(parsed: ParsedRecipe) {
   return (
-    /^[-•*]\s+/.test(line) ||
-    /^\d+([.,/]\d+)?\s*(g|kg|ml|l|lugë|luge|filxhan|thelb|kokrra|copë|cope)\b/i.test(line)
+    parsed.title.trim().length > 0 &&
+    !isPlaceholderRecipeTitle(parsed.title) &&
+    parsed.ingredients.some((ingredient) => ingredient.text.trim()) &&
+    parsed.steps.some((step) => step.trim())
   );
 }
 
-function stripListMarker(line: string) {
-  return line.replace(/^[-•*]\s+/, "").replace(/^\d+[.)]\s+/, "").trim();
+export function isPlaceholderRecipeTitle(title: string) {
+  const normalized = title.trim().toLowerCase();
+
+  return (
+    normalized.length === 0 ||
+    normalized === "recetë e re" ||
+    normalized === "recete e re" ||
+    normalized === "link nga instagram" ||
+    normalized === "link nga tiktok" ||
+    normalized === "link nga youtube" ||
+    normalized === "tiktok recipe" ||
+    normalized === "instagram recipe" ||
+    normalized === "import i ri" ||
+    normalized.startsWith("recetë nga ") ||
+    normalized.startsWith("recete nga ")
+  );
 }
 
 function cleanTitle(title: string) {
-  return title
-    .replace(URL_REGEX, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 80) || "Recetë e re";
+  return (
+    title
+      .replace(URL_REGEX, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 100) || "Recetë e re"
+  );
 }
 
 function domainFromUrl(url: string) {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
   } catch {
-    return "web";
+    return "Web";
   }
-}
-
-function getDescriptionForDraft(draft: ImportDraft) {
-  if (draft.sourceUrl) {
-    return "Importuar nga linku origjinal. Përbërësit dhe hapat mund t’i rregullosh më vonë.";
-  }
-
-  if (draft.imageUri) {
-    return "Importuar nga foto. OCR/leximi i fotos do të lidhet në hapin tjetër.";
-  }
-
-  return "Importuar nga tekst i ngjitur.";
 }

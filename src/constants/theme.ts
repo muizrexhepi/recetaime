@@ -1,27 +1,34 @@
 import { Platform } from "react-native";
 
 export const colors = {
-  background: "#FAF6EA",
-  surface: "#FFFFFF",
-  surfaceElevated: "#FFFDF8",
-  surfaceMuted: "#F4EFE5",
+  // Base
+  background: "#FFFFFF",
 
+  // Surfaces
+  surface: "#f6f6f3",
+  surfaceElevated: "#FFFFFF",
+  surfaceMuted: "#efefeeb",
+
+  // Text
   textPrimary: "#17130F",
   textSecondary: "#6F685D",
   textTertiary: "#9B9286",
   textMuted: "#B7AEA2",
   textInverse: "#FFFFFF",
 
+  // Borders
   border: "rgba(39, 31, 23, 0.10)",
-  borderLight: "rgba(39, 31, 23, 0.065)",
+  borderLight: "rgba(39, 31, 23, 0.06)",
   borderStrong: "rgba(39, 31, 23, 0.16)",
 
+  // Brand
   accent: "#EF4A38",
-  accentHover: "#E33F2E",
+  accentHover: "#E34230",
   accentPressed: "#C93425",
-  accentSubtle: "rgba(239, 74, 56, 0.095)",
-  accentSoft: "rgba(239, 74, 56, 0.16)",
+  accentSubtle: "rgba(239, 74, 56, 0.09)",
+  accentSoft: "rgba(239, 74, 56, 0.15)",
 
+  // Semantic
   success: "#2F8F5B",
   successSubtle: "rgba(47, 143, 91, 0.12)",
 
@@ -36,27 +43,34 @@ export const colors = {
 
   tabInactive: "#9B9286",
 
-  // old aliases so existing files do not break
+  // Legacy aliases
   text: "#17130F",
-  backgroundElement: "#FFFFFF",
-  backgroundSelected: "#FFF1ED",
+  textSecondaryOld: "#6F685D",
+  textTertiaryOld: "#9B9286",
+
+  backgroundElement: "#f6f6f3",
+  backgroundSelected: "rgba(239, 74, 56, 0.09)",
+
   paper: "#FFFFFF",
   card: "#FFFFFF",
-  cardMuted: "#F4EFE5",
+  cardMuted: "#f6f6f3",
+
   primary: "#EF4A38",
   primaryDark: "#C93425",
-  primarySoft: "rgba(239, 74, 56, 0.095)",
+  primarySoft: "rgba(239, 74, 56, 0.09)",
+
   herbGreen: "#2F8F5B",
   softGreen: "rgba(47, 143, 91, 0.12)",
+
   blue: "#4F8FEA",
   blueSoft: "rgba(79, 143, 234, 0.12)",
+
   gold: "#F3B64C",
   goldSoft: "rgba(243, 182, 76, 0.14)",
+
   danger: "#D93D2E",
 } as const;
 
-// Force same light theme for now.
-// The app brand/assets look much better light-only.
 export const Colors = {
   light: colors,
   dark: colors,
@@ -118,71 +132,83 @@ export const Typography = {
     fontFamily: fonts.bold,
     fontSize: 38,
     lineHeight: 43,
+    fontWeight: "800" as const,
     letterSpacing: -1.05,
   },
   h1: {
     fontFamily: fonts.bold,
     fontSize: 32,
     lineHeight: 38,
+    fontWeight: "800" as const,
     letterSpacing: -0.75,
   },
   h2: {
     fontFamily: fonts.bold,
     fontSize: 26,
     lineHeight: 32,
+    fontWeight: "700" as const,
     letterSpacing: -0.45,
   },
   title: {
     fontFamily: fonts.bold,
     fontSize: 22,
     lineHeight: 28,
+    fontWeight: "700" as const,
     letterSpacing: -0.25,
   },
   cardTitle: {
     fontFamily: fonts.bold,
     fontSize: 18,
     lineHeight: 23,
+    fontWeight: "700" as const,
     letterSpacing: -0.12,
   },
   body: {
     fontFamily: fonts.regular,
     fontSize: 17,
     lineHeight: 24,
+    fontWeight: "400" as const,
     letterSpacing: -0.04,
   },
   bodyMedium: {
     fontFamily: fonts.medium,
     fontSize: 17,
     lineHeight: 24,
+    fontWeight: "500" as const,
     letterSpacing: -0.04,
   },
   subhead: {
     fontFamily: fonts.medium,
     fontSize: 15,
     lineHeight: 21,
+    fontWeight: "500" as const,
     letterSpacing: -0.03,
   },
   footnote: {
     fontFamily: fonts.medium,
     fontSize: 13.5,
     lineHeight: 18,
+    fontWeight: "500" as const,
     letterSpacing: -0.02,
   },
   caption: {
     fontFamily: fonts.medium,
     fontSize: 12,
     lineHeight: 16,
+    fontWeight: "500" as const,
   },
   button: {
     fontFamily: fonts.bold,
     fontSize: 16,
     lineHeight: 21,
+    fontWeight: "700" as const,
     letterSpacing: -0.05,
   },
   tabLabel: {
     fontFamily: fonts.bold,
     fontSize: 12,
     lineHeight: 15,
+    fontWeight: "700" as const,
     letterSpacing: -0.05,
   },
 } as const;
@@ -232,7 +258,7 @@ export const Shadows = {
   },
   medium: {
     shadowColor: colors.shadow,
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.075,
     shadowRadius: 22,
     shadowOffset: { width: 0, height: 10 },
     elevation: 3,

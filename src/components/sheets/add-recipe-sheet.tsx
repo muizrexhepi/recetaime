@@ -13,7 +13,6 @@ import {
   IconClipboardText,
   IconLink,
   IconPencil,
-  IconX,
 } from "@tabler/icons-react-native";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
@@ -113,13 +112,13 @@ export const AddRecipeSheet = forwardRef<AddRecipeSheetRef>(
         >
           <View style={styles.header}>
             <View style={styles.headerText}>
-              <ThemedText type="h2">Shto recetë</ThemedText>
-              <ThemedText type="bodyMedium" color="secondary">
+              <ThemedText type="cardTitle">Shto recetë</ThemedText>
+              {/* <ThemedText type="bodyMedium" color="secondary">
                 Importo nga link, foto ose shkruaje vetë.
-              </ThemedText>
+              </ThemedText> */}
             </View>
 
-            <Pressable
+            {/* <Pressable
               onPress={close}
               hitSlop={10}
               style={({ pressed }) => [
@@ -131,7 +130,7 @@ export const AddRecipeSheet = forwardRef<AddRecipeSheetRef>(
               ]}
             >
               <IconX size={23} color={theme.textSecondary} strokeWidth={2.4} />
-            </Pressable>
+            </Pressable> */}
           </View>
 
           <Pressable
@@ -148,8 +147,8 @@ export const AddRecipeSheet = forwardRef<AddRecipeSheetRef>(
             <SocialIcons />
 
             <View style={styles.socialCopy}>
-              <ThemedText type="cardTitle">Nga rrjetet sociale</ThemedText>
-              <ThemedText type="subhead" color="secondary" numberOfLines={1}>
+              <ThemedText type="subhead">Nga rrjetet sociale</ThemedText>
+              <ThemedText type="footnote" color="secondary" numberOfLines={1}>
                 TikTok, Instagram, YouTube ose link
               </ThemedText>
             </View>
@@ -234,7 +233,7 @@ function SheetTile({
         {icon}
       </View>
 
-      <ThemedText type="cardTitle" numberOfLines={2}>
+      <ThemedText type="subhead" numberOfLines={2}>
         {title}
       </ThemedText>
     </Pressable>
@@ -300,8 +299,8 @@ const styles = StyleSheet.create({
     ...Shadows.soft,
   },
   tileIcon: {
-    width: 52,
-    height: 52,
+    width: 42,
+    height: 42,
     borderRadius: Radius.lg,
     alignItems: "center",
     justifyContent: "center",

@@ -4,17 +4,16 @@ import {
   IconCrown,
   IconHelp,
   IconLanguage,
-  IconLogout,
   IconRefresh,
-  IconSettings,
   IconShieldLock,
   IconUser,
+  IconUserPlus,
 } from "@tabler/icons-react-native";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import { Alert, Pressable, ScrollView, StyleSheet } from "react-native";
+import { Alert, Pressable, StyleSheet } from "react-native";
 
-import { TabScreenHeader } from "@/components/tabs/tab-screen-header";
+import { TabScreen } from "@/components/tabs/tab-screen";
 import { ThemedButton } from "@/components/ui/themed-button";
 import { ThemedCard } from "@/components/ui/themed-card";
 import { ThemedText } from "@/components/ui/themed-text";
@@ -29,19 +28,52 @@ export default function ProfileScreen() {
   const router = useRouter();
   const theme = useTheme();
 
-  const { isAuthenticated, user } = useAuth();
+  const auth = useAuth() as any;
+  const hasAccount = Boolean(
+    auth?.isAuthenticated || auth?.user || auth?.token,
+  );
+
   const guestId = useGuestStore((state) => state.guestId);
   const resetGuest = useGuestStore((state) => state.resetGuest);
   const resetFlow = useOnboardingFlowStore((state) => state.resetFlow);
 
-  const displayName = isAuthenticated
-    ? (user?.email ?? "Llogaria jote")
-    : shortGuestName(guestId);
+  const displayName = hasAccount
+    ? getUserName(auth?.user)
+    : getGuestName(guestId);
 
-  const resetOnboarding = () => {
+  const handleCreateAccount = () => {
+    router.push("/onboarding/create-account" as any);
+  };
+
+  const handleSubscription = () => {
+    router.push("/paywall" as any);
+  };
+
+  const handleLogout = () => {
+    Alert.alert("Dil nga llogaria?", "Do të dalësh nga kjo pajisje.", [
+      { text: "Anulo", style: "cancel" },
+      {
+        text: "Dil",
+        style: "destructive",
+        onPress: async () => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+          if (typeof auth?.signOut === "function") {
+            await auth.signOut();
+          } else if (typeof auth?.logout === "function") {
+            await auth.logout();
+          }
+
+          router.replace("/onboarding" as any);
+        },
+      },
+    ]);
+  };
+
+  const handleResetOnboarding = () => {
     Alert.alert(
       "Rinis onboarding?",
-      "Kjo do ta pastrojë testimin lokal dhe do të kthejë aplikacionin në fillim.",
+      "Kjo është vetëm për testim gjatë zhvillimit.",
       [
         { text: "Anulo", style: "cancel" },
         {
@@ -59,344 +91,277 @@ export default function ProfileScreen() {
   };
 
   return (
-    <ThemedView style={styles.container}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.content}
-      >
-        <TabScreenHeader
-          title="Profili"
-          subtitle="Llogaria, gjuha dhe preferencat."
-        />
-
-        <ThemedView transparent style={styles.profileRow}>
-          <ThemedView
-            style={[styles.avatar, { backgroundColor: theme.primarySoft }]}
-          >
-            <IconUser size={30} color={theme.primary} strokeWidth={2.1} />
-          </ThemedView>
-
-          <ThemedView transparent style={styles.profileText}>
-            <ThemedText type="subtitle" style={styles.name} numberOfLines={1}>
-              {displayName}
-            </ThemedText>
-
-            <Pressable>
-              <ThemedText
-                type="default"
-                style={[styles.createAccount, { color: theme.primary }]}
-              >
-                {isAuthenticated ? "Llogari aktive" : "Krijo llogari"}
-              </ThemedText>
-            </Pressable>
-          </ThemedView>
+    <TabScreen>
+      <ThemedView transparent style={styles.profileHeader}>
+        <ThemedView
+          style={[styles.avatar, { backgroundColor: theme.primarySoft }]}
+        >
+          <IconUser size={34} color={theme.primary} strokeWidth={2.15} />
         </ThemedView>
 
-        <ThemedCard style={styles.upgradeCard}>
+        <ThemedText type="title" style={styles.name} numberOfLines={1}>
+          {displayName}
+        </ThemedText>
+
+        {!hasAccount ? (
+          <Pressable onPress={handleCreateAccount} hitSlop={10}>
+            <ThemedText type="bodyMedium" style={{ color: theme.primary }}>
+              Krijo llogari
+            </ThemedText>
+          </Pressable>
+        ) : (
+          <ThemedText type="subhead" themeColor="textSecondary">
+            Llogari aktive
+          </ThemedText>
+        )}
+      </ThemedView>
+
+      <Pressable onPress={handleSubscription}>
+        <ThemedCard style={styles.proCard}>
           <ThemedView
-            style={[styles.upgradeIcon, { backgroundColor: theme.goldSoft }]}
+            style={[styles.proIcon, { backgroundColor: theme.goldSoft }]}
           >
-            <IconCrown size={22} color={theme.gold} strokeWidth={2.2} />
+            <IconCrown size={24} color={theme.gold} strokeWidth={2.25} />
           </ThemedView>
 
-          <ThemedView transparent style={styles.upgradeText}>
-            <ThemedText type="smallBold" style={styles.upgradeTitle}>
-              Receta Ime Pro
-            </ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              Importime pa limit, plan vaktesh dhe lista më të mençura.
+          <ThemedView transparent style={styles.proCopy}>
+            <ThemedText type="cardTitle">Receta Ime Pro</ThemedText>
+            <ThemedText type="subhead" themeColor="textSecondary">
+              Importime pa limit, AI më i mirë dhe mjete të avancuara.
             </ThemedText>
           </ThemedView>
 
           <IconChevronRight
-            size={20}
+            size={21}
             color={theme.textTertiary}
-            strokeWidth={2.1}
+            strokeWidth={2.2}
           />
         </ThemedCard>
+      </Pressable>
 
-        <ThemedView transparent style={styles.section}>
-          <SettingsRow
+      <ThemedView transparent style={styles.section}>
+        {!hasAccount ? (
+          <ProfileRow
             icon={
-              <IconShieldLock
-                size={21}
+              <IconUserPlus
+                size={22}
                 color={theme.textSecondary}
-                strokeWidth={2.1}
+                strokeWidth={2.2}
               />
             }
             title="Krijo llogari"
             subtitle="Ruaji recetat që të mos humbin."
+            onPress={handleCreateAccount}
           />
+        ) : null}
 
-          <SettingsRow
-            icon={
-              <IconCrown
-                size={21}
-                color={theme.textSecondary}
-                strokeWidth={2.1}
-              />
-            }
-            title="Abonimi im"
-          />
-
-          <SettingsRow
-            icon={
-              <IconLanguage
-                size={21}
-                color={theme.textSecondary}
-                strokeWidth={2.1}
-              />
-            }
-            title="Gjuha"
-          />
-
-          <SettingsRow
-            icon={
-              <IconBell
-                size={21}
-                color={theme.textSecondary}
-                strokeWidth={2.1}
-              />
-            }
-            title="Kujtesat"
-          />
-
-          <SettingsRow
-            icon={
-              <IconSettings
-                size={21}
-                color={theme.textSecondary}
-                strokeWidth={2.1}
-              />
-            }
-            title="Preferencat"
-          />
-
-          <SettingsRow
-            icon={
-              <IconHelp
-                size={21}
-                color={theme.textSecondary}
-                strokeWidth={2.1}
-              />
-            }
-            title="Ndihmë"
-          />
-        </ThemedView>
-
-        <ThemedButton
-          title="Rinis onboarding"
-          variant="secondary"
-          onPress={resetOnboarding}
+        <ProfileRow
+          icon={
+            <IconShieldLock
+              size={22}
+              color={theme.textSecondary}
+              strokeWidth={2.2}
+            />
+          }
+          title="Abonimi im"
+          onPress={handleSubscription}
         />
 
-        <Pressable
-          onPress={resetOnboarding}
-          style={({ pressed }) => [
-            styles.resetButton,
-            {
-              opacity: pressed ? 0.72 : 1,
-            },
-          ]}
-        >
-          <IconRefresh size={19} color={theme.primary} strokeWidth={2.2} />
-          <ThemedText
-            type="smallBold"
-            style={[styles.resetText, { color: theme.primary }]}
-          >
-            Pastro testimin
-          </ThemedText>
-        </Pressable>
+        <ProfileRow
+          icon={
+            <IconLanguage
+              size={22}
+              color={theme.textSecondary}
+              strokeWidth={2.2}
+            />
+          }
+          title="Gjuha"
+        />
 
-        <Pressable
-          onPress={resetOnboarding}
-          style={({ pressed }) => [
-            styles.logoutButton,
-            {
-              opacity: pressed ? 0.72 : 1,
-            },
-          ]}
-        >
-          <IconLogout size={19} color={theme.danger} strokeWidth={2.2} />
-          <ThemedText
-            type="smallBold"
-            style={[styles.logoutText, { color: theme.danger }]}
-          >
-            Dil
-          </ThemedText>
-        </Pressable>
+        <ProfileRow
+          icon={
+            <IconBell size={22} color={theme.textSecondary} strokeWidth={2.2} />
+          }
+          title="Kujtesat"
+        />
 
-        <ThemedText
-          type="small"
-          themeColor="textTertiary"
-          style={styles.version}
-        >
-          Version 1.0.0
-        </ThemedText>
-      </ScrollView>
-    </ThemedView>
+        <ProfileRow
+          icon={
+            <IconHelp size={22} color={theme.textSecondary} strokeWidth={2.2} />
+          }
+          title="Ndihmë"
+        />
+      </ThemedView>
+
+      {__DEV__ ? (
+        <ThemedView transparent style={styles.section}>
+          <ProfileRow
+            icon={
+              <IconRefresh size={22} color={theme.primary} strokeWidth={2.2} />
+            }
+            title="Rinis onboarding"
+            subtitle="Vetëm për testim gjatë zhvillimit."
+            onPress={handleResetOnboarding}
+          />
+        </ThemedView>
+      ) : null}
+
+      {hasAccount ? (
+        <ThemedButton
+          title="Dil"
+          variant="primary"
+          onPress={handleLogout}
+          style={styles.logoutButton}
+        />
+      ) : null}
+
+      <ThemedText
+        type="subhead"
+        themeColor="textTertiary"
+        style={styles.version}
+      >
+        Version 1.0.0
+      </ThemedText>
+    </TabScreen>
   );
 }
 
-function SettingsRow({
+function ProfileRow({
   icon,
   title,
   subtitle,
+  onPress,
 }: {
   icon: React.ReactNode;
   title: string;
   subtitle?: string;
+  onPress?: () => void;
 }) {
   const theme = useTheme();
 
   return (
     <Pressable
-      style={({ pressed }) => [styles.row, { opacity: pressed ? 0.78 : 1 }]}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.row,
+        {
+          opacity: pressed ? 0.65 : 1,
+        },
+      ]}
     >
-      <ThemedView
-        style={[styles.rowIcon, { backgroundColor: theme.cardMuted }]}
-      >
+      <ThemedView style={[styles.rowIcon, { backgroundColor: theme.surface }]}>
         {icon}
       </ThemedView>
 
-      <ThemedView transparent style={styles.rowText}>
-        <ThemedText type="default" style={styles.rowTitle}>
+      <ThemedView transparent style={styles.rowCopy}>
+        <ThemedText type="bodyMedium" style={styles.rowTitle}>
           {title}
         </ThemedText>
 
         {subtitle ? (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="subhead" themeColor="textSecondary">
             {subtitle}
           </ThemedText>
         ) : null}
       </ThemedView>
 
       <IconChevronRight
-        size={19}
+        size={20}
         color={theme.textTertiary}
-        strokeWidth={2.1}
+        strokeWidth={2.2}
       />
     </Pressable>
   );
 }
 
-function shortGuestName(guestId?: string) {
-  if (!guestId) return "Mysafir";
-  const suffix = guestId.split("_").at(-1)?.slice(0, 5);
-  return suffix ? `mysafir-${suffix}` : "Mysafir";
+function getUserName(user: unknown) {
+  const anyUser = user as any;
+
+  return (
+    anyUser?.name ?? anyUser?.fullName ?? anyUser?.email ?? "Llogaria jote"
+  );
+}
+
+function getGuestName(guestId?: string) {
+  const suffix = guestId?.split("_").at(-1)?.slice(0, 3);
+
+  if (!suffix) return "mysafir";
+
+  return `mysafir-${suffix}`;
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  content: {
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.xxxl,
-    paddingBottom: 140,
-  },
-  profileRow: {
-    marginTop: Spacing.xxl,
-    flexDirection: "row",
+  profileHeader: {
     alignItems: "center",
-    gap: Spacing.md,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.xxl,
+    gap: Spacing.xs,
   },
   avatar: {
-    width: 68,
-    height: 68,
+    width: 84,
+    height: 84,
     borderRadius: Radius.full,
     alignItems: "center",
     justifyContent: "center",
-  },
-  profileText: {
-    flex: 1,
-    gap: 2,
+    marginBottom: Spacing.sm,
   },
   name: {
-    fontSize: 25,
-    lineHeight: 31,
-    fontWeight: "800",
-    letterSpacing: -0.4,
+    fontSize: 24,
+    lineHeight: 30,
+    textAlign: "center",
   },
-  createAccount: {
-    fontSize: 16,
-    lineHeight: 22,
-    fontWeight: "600",
-  },
-  upgradeCard: {
-    marginTop: Spacing.xxl,
+  proCard: {
     padding: Spacing.lg,
     borderRadius: Radius.xl,
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.md,
   },
-  upgradeIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: Radius.lg,
+  proIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: Radius.md,
     alignItems: "center",
     justifyContent: "center",
   },
-  upgradeText: {
+  proCopy: {
     flex: 1,
     gap: 2,
   },
-  upgradeTitle: {
-    fontSize: 17,
-    lineHeight: 22,
-  },
   section: {
-    marginTop: Spacing.xxl,
-    gap: Spacing.xs,
+    marginTop: Spacing.xl,
+    paddingTop: Spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(39, 31, 23, 0.10)",
   },
   row: {
-    minHeight: 62,
+    minHeight: 70,
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.md,
   },
   rowIcon: {
-    width: 42,
-    height: 42,
+    width: 46,
+    height: 46,
     borderRadius: Radius.md,
     alignItems: "center",
     justifyContent: "center",
   },
-  rowText: {
+  rowCopy: {
     flex: 1,
     gap: 2,
   },
   rowTitle: {
-    fontSize: 17,
-    lineHeight: 23,
-    fontWeight: "600",
-  },
-  resetButton: {
-    marginTop: Spacing.lg,
-    height: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: Spacing.sm,
-  },
-  resetText: {
-    fontSize: 15,
-    lineHeight: 20,
+    fontSize: 20,
+    lineHeight: 26,
   },
   logoutButton: {
-    height: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: Spacing.sm,
-  },
-  logoutText: {
-    fontSize: 15,
-    lineHeight: 20,
+    marginTop: Spacing.xxxl,
+    alignSelf: "center",
+    width: "78%",
   },
   version: {
-    marginTop: Spacing.xl,
+    marginTop: Spacing.xxl,
     textAlign: "center",
   },
 });

@@ -17,11 +17,7 @@ export function OnboardingHeading({
 }: OnboardingHeadingProps) {
   return (
     <ThemedView transparent style={styles.wrap}>
-      <ThemedText
-        type="subtitle"
-        numberOfLines={2}
-        style={styles.title}
-      >
+      <ThemedText type="subtitle" numberOfLines={2} style={styles.title}>
         {title}
       </ThemedText>
 
