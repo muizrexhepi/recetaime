@@ -29,6 +29,7 @@ type NeedsInputReason =
 type DebugExtractionSource =
     | "share_text"
     | "tiktok_oembed"
+    | "tiktok_meta"
     | "instagram_meta"
     | "instagram_embed"
     | "youtube_oembed"
@@ -208,6 +209,7 @@ const importResult = v.object({
             source: v.union(
                 v.literal("share_text"),
                 v.literal("tiktok_oembed"),
+                v.literal("tiktok_meta"),
                 v.literal("instagram_meta"),
                 v.literal("instagram_embed"),
                 v.literal("youtube_oembed"),
@@ -876,59 +878,164 @@ async function extractTikTokContent(
     context: ExtractionContext,
 ) {
     const warnings: string[] = [];
+    const candidates: {
+        source: DebugExtractionSource;
+        text: string;
+        title?: string;
+        description?: string;
+        htmlText?: string;
+    }[] = [];
+    let blocked = false;
+
+    for (const candidateUrl of uniqueStrings([
+        sourceUrl,
+        context.normalizedUrl,
+        context.resolvedUrl,
+        context.originalUrl,
+    ])) {
+        try {
+            const response = await fetchWithTimeout(
+                `https://www.tiktok.com/oembed?url=${encodeURIComponent(candidateUrl)}`,
+                {
+                    headers: realisticHeaders("application/json,text/plain,*/*"),
+                },
+                4500,
+                1,
+            );
+
+            if (!response.ok) {
+                warnings.push(`TikTok oEmbed returned ${response.status}.`);
+                blocked = blocked || response.status === 403 || response.status === 429;
+                continue;
+            }
+
+            const data = (await response.json()) as {
+                title?: string;
+                author_name?: string;
+                thumbnail_url?: string;
+                html?: string;
+            };
+            const htmlText = extractParagraphText(data.html ?? "");
+            const text = cleanTikTokText(
+                joinContent([data.title, htmlText]),
+                data.author_name,
+            );
+
+            candidates.push({
+                source: "tiktok_oembed",
+                text,
+                title: cleanTikTokText(data.title ?? "", data.author_name),
+                description: data.author_name ? `TikTok nga ${data.author_name}` : undefined,
+                htmlText,
+            });
+
+            if (hasUsefulRecipeText(text)) break;
+        } catch {
+            warnings.push("TikTok oEmbed nuk u lexua.");
+            blocked = true;
+        }
+    }
 
     try {
         const response = await fetchWithTimeout(
-            `https://www.tiktok.com/oembed?url=${encodeURIComponent(sourceUrl)}`,
+            sourceUrl,
             {
-                headers: realisticHeaders("application/json,text/plain,*/*"),
+                headers: realisticHeaders("text/html,application/xhtml+xml"),
+                redirect: "follow",
             },
-            4500,
+            5500,
             1,
         );
 
         if (!response.ok) {
-            return {
-                rawContent: raw,
-                text: "",
-                warnings: [`TikTok oEmbed returned ${response.status}.`],
-                blocked: response.status === 403 || response.status === 429,
-            };
+            warnings.push(`TikTok metadata returned ${response.status}.`);
+            blocked = blocked || response.status === 403 || response.status === 429;
+        } else {
+            const extracted = extractTikTokTextFromHtml(await response.text());
+            const text = bestTikTokCandidate([
+                extracted.caption,
+                extracted.jsonText,
+                extracted.description,
+                extracted.visibleText,
+                extracted.title,
+            ]);
+
+            candidates.push({
+                source: "tiktok_meta",
+                text,
+                title: extracted.title,
+                description: extracted.description,
+                htmlText: extracted.visibleText,
+            });
         }
-
-        const data = (await response.json()) as {
-            title?: string;
-            author_name?: string;
-            thumbnail_url?: string;
-            html?: string;
-        };
-        const htmlText = extractParagraphText(data.html ?? "");
-        const text = cleanTikTokText(
-            joinContent([data.title, htmlText]),
-            data.author_name,
-        );
-
-        return {
-            rawContent: compactRawContent({
-                ...raw,
-                title: cleanTikTokText(data.title ?? "", data.author_name),
-                caption: text,
-                description: data.author_name ? `TikTok nga ${data.author_name}` : undefined,
-                htmlText,
-            }),
-            text,
-            warnings,
-            blocked: false,
-            debugExtraction: makeDebug("tiktok_oembed", text, context),
-        };
     } catch {
-        return {
-            rawContent: raw,
-            text: "",
-            warnings: ["TikTok oEmbed nuk u lexua."],
-            blocked: true,
-        };
+        warnings.push("TikTok metadata nuk u lexua.");
+        blocked = true;
     }
+
+    const itemId = uniqueStrings([
+        sourceUrl,
+        context.normalizedUrl,
+        context.resolvedUrl,
+        context.originalUrl,
+    ])
+        .map(extractTikTokItemId)
+        .find(isNonEmptyString);
+
+    if (itemId) {
+        try {
+            const response = await fetchWithTimeout(
+                `https://www.tiktok.com/api/item/detail/?itemId=${encodeURIComponent(itemId)}&aid=1988`,
+                {
+                    headers: {
+                        ...realisticHeaders("application/json,text/plain,*/*"),
+                        referer: sourceUrl,
+                    },
+                },
+                5500,
+                1,
+            );
+
+            if (!response.ok) {
+                warnings.push(`TikTok item detail returned ${response.status}.`);
+                blocked = blocked || response.status === 403 || response.status === 429;
+            } else {
+                const detailCandidates: string[] = [];
+                collectTikTokJsonCandidates(await response.json(), detailCandidates);
+                const text = bestTikTokCandidate(detailCandidates);
+
+                candidates.push({
+                    source: "tiktok_meta",
+                    text,
+                    title: titleFromSocialCaption(text),
+                    description: text ? "TikTok video metadata" : undefined,
+                    htmlText: text,
+                });
+            }
+        } catch {
+            warnings.push("TikTok video metadata nuk u lexua.");
+        }
+    }
+
+    const best = candidates
+        .filter((candidate) => candidate.text.trim())
+        .sort((a, b) => scoreTikTokCandidate(b.text) - scoreTikTokCandidate(a.text))[0];
+    const text = best ? cleanTikTokText(best.text) : "";
+    const derivedTitle = titleFromSocialCaption(text) ?? best?.title ?? raw.title;
+
+    return {
+        rawContent: compactRawContent({
+            ...raw,
+            title: derivedTitle,
+            description: best?.description ?? raw.description,
+            caption: text || undefined,
+            htmlText: best?.htmlText ?? raw.htmlText,
+        }),
+        text,
+        warnings,
+        blocked: blocked && !text,
+        debugExtraction: makeDebug(best?.source ?? "tiktok_oembed", text, context),
+    };
 }
 
 async function extractInstagramContent(
@@ -1082,6 +1189,43 @@ function extractInstagramTextFromHtml(html: string) {
     };
 }
 
+function extractTikTokTextFromHtml(html: string) {
+    const title = extractTitle(html);
+    const description =
+        extractMetaContent(html, "og:description") ??
+        extractMetaContent(html, "description") ??
+        extractMetaContent(html, "twitter:description");
+    const caption = extractTikTokCaptionFromDescription(description);
+    const jsonText = extractTikTokJsonCaption(html);
+    const visibleText = extractTikTokVisibleText(html);
+
+    return {
+        title: title ? cleanTikTokText(title) : undefined,
+        description: description ? cleanTikTokText(description) : undefined,
+        caption,
+        jsonText,
+        visibleText,
+    };
+}
+
+function extractTikTokItemId(sourceUrl: string | undefined) {
+    if (!sourceUrl) return undefined;
+
+    try {
+        const url = new URL(sourceUrl);
+        const segments = url.pathname.split("/").filter(Boolean);
+        const videoIndex = segments.findIndex((segment) => segment === "video");
+        const photoIndex = segments.findIndex((segment) => segment === "photo");
+        const id =
+            (videoIndex >= 0 ? segments[videoIndex + 1] : undefined) ??
+            (photoIndex >= 0 ? segments[photoIndex + 1] : undefined);
+
+        return id && /^\d{8,}$/.test(id) ? id : undefined;
+    } catch {
+        return sourceUrl.match(/(?:video|photo)\/(\d{8,})/)?.[1];
+    }
+}
+
 function extractInstagramCaptionFromDescription(description?: string) {
     if (!description) return undefined;
 
@@ -1091,6 +1235,19 @@ function extractInstagramCaptionFromDescription(description?: string) {
         decoded.match(/:\s*([^:]{35,5000})$/)?.[1];
 
     return quoted ? cleanInstagramText(quoted) : undefined;
+}
+
+function extractTikTokCaptionFromDescription(description?: string) {
+    if (!description) return undefined;
+
+    const decoded = decodeHtml(description).replace(/\s+/g, " ").trim();
+    const quoted =
+        decoded.match(/[""]([^""]{20,5000})[""]/)?.[1] ??
+        decoded.match(/:\s*([^:]{35,5000})$/)?.[1] ??
+        decoded;
+    const cleaned = cleanTikTokText(quoted);
+
+    return cleaned.length > 20 && !isGenericTikTokText(cleaned) ? cleaned : undefined;
 }
 
 function extractInstagramVisibleText(html: string) {
@@ -1103,6 +1260,19 @@ function extractInstagramVisibleText(html: string) {
         .filter((candidate) => candidate.length > 25 && !isGenericInstagramText(candidate));
 
     return candidates.sort((a, b) => scoreInstagramCandidate(b) - scoreInstagramCandidate(a))[0];
+}
+
+function extractTikTokVisibleText(html: string) {
+    const candidates = [
+        ...extractTaggedText(html, "h1"),
+        ...extractTaggedText(html, "h2"),
+        ...extractTaggedText(html, "p"),
+        ...extractTaggedText(html, "span"),
+    ]
+        .map((candidate) => cleanTikTokText(candidate))
+        .filter((candidate) => candidate.length > 20 && !isGenericTikTokText(candidate));
+
+    return candidates.sort((a, b) => scoreTikTokCandidate(b) - scoreTikTokCandidate(a))[0];
 }
 
 function extractTaggedText(html: string, tagName: string) {
@@ -1120,8 +1290,53 @@ function extractTaggedText(html: string, tagName: string) {
     return values;
 }
 
+function extractTikTokJsonCaption(html: string) {
+    const candidates: string[] = [];
+    const ldJsonBlocks = html.matchAll(
+        /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
+    );
+
+    for (const block of ldJsonBlocks) {
+        const payload = decodeHtml(block[1] ?? "").trim();
+
+        try {
+            collectTikTokJsonCandidates(JSON.parse(payload), candidates);
+        } catch {
+            continue;
+        }
+    }
+
+    const scripts = html.match(/<script\b[^>]*>([\s\S]*?)<\/script>/gi) ?? [];
+
+    for (const script of scripts) {
+        const text = decodeHtml(script.replace(/<script\b[^>]*>/i, "").replace(/<\/script>/i, ""));
+        if (!/(desc|description|caption|shareMeta|videoData|itemStruct)/i.test(text)) {
+            continue;
+        }
+
+        for (const match of text.matchAll(/"(?:desc|description|caption|title)"\s*:\s*"((?:\\.|[^"\\]){20,5000})"/g)) {
+            const value = safeJsonString(match[1]);
+            if (value) candidates.push(value);
+        }
+
+        for (const match of text.matchAll(/\\+"(?:desc|description|caption|title)\\+"\s*:\s*\\+"((?:\\\\.|[^"\\]){20,5000})\\+"/g)) {
+            const value = safeJsonString(match[1].replace(/\\"/g, '"'));
+            if (value) candidates.push(value);
+        }
+    }
+
+    return candidates
+        .map((candidate) => cleanTikTokText(candidate))
+        .filter((candidate) => candidate.length > 20 && !isGenericTikTokText(candidate))
+        .sort((a, b) => scoreTikTokCandidate(b) - scoreTikTokCandidate(a))[0];
+}
+
 function cleanTikTokText(text: string, authorName?: string) {
     return cleanSocialText(text)
+        .replace(/\bTikTok video from [^:]{1,140}:\s*/gi, " ")
+        .replace(/\b\d+(?:[.,]\d+)?[kmb]?\s+likes?,?\s*\d*(?:[.,]\d+)?[kmb]?\s*comments?\.?/gi, " ")
+        .replace(/\boriginal sound\s*[-:].*$/gim, " ")
+        .replace(/^TikTok\s*[-:]\s*/gi, " ")
         .split(/\n+/)
         .map((line) => line.trim())
         .filter((line) => {
@@ -1130,11 +1345,19 @@ function cleanTikTokText(text: string, authorName?: string) {
             if (authorName && normalized === authorName.toLowerCase()) return false;
             if (/^@[\w.-]+$/.test(line)) return false;
             if (/original sound/i.test(line)) return false;
+            if (/^watch more trending videos/i.test(line)) return false;
             if (isHashtagsOnly(line)) return false;
             return true;
         })
         .join("\n")
         .trim();
+}
+
+function bestTikTokCandidate(candidates: (string | undefined)[]) {
+    return candidates
+        .map((candidate) => cleanTikTokText(candidate ?? ""))
+        .filter((candidate) => candidate.length > 20 && !isGenericTikTokText(candidate))
+        .sort((a, b) => scoreTikTokCandidate(b) - scoreTikTokCandidate(a))[0] ?? "";
 }
 
 function cleanInstagramText(text: string) {
@@ -1178,6 +1401,19 @@ function isGenericInstagramText(text: string) {
         normalized === "photos and videos" ||
         normalized.includes("create an account or log in") ||
         normalized.includes("see instagram photos and videos")
+    );
+}
+
+function isGenericTikTokText(text: string) {
+    const normalized = text.toLowerCase().trim();
+    return (
+        !normalized ||
+        normalized === "tiktok" ||
+        normalized === "make your day" ||
+        normalized.includes("watch more trending videos") ||
+        normalized.includes("discover videos related to") ||
+        normalized.includes("log in to follow creators") ||
+        normalized.includes("download the app")
     );
 }
 
@@ -1249,6 +1485,29 @@ function titleFromSocialCaption(text: string) {
     return line;
 }
 
+function collectTikTokJsonCandidates(value: unknown, candidates: string[]) {
+    if (Array.isArray(value)) {
+        for (const item of value) collectTikTokJsonCandidates(item, candidates);
+        return;
+    }
+
+    if (!isRecord(value)) return;
+
+    for (const [key, nested] of Object.entries(value)) {
+        if (
+            typeof nested === "string" &&
+            /^(caption|desc|description|text|title|name)$/i.test(key) &&
+            nested.trim().length >= 20
+        ) {
+            candidates.push(nested);
+        }
+
+        if (Array.isArray(nested) || isRecord(nested)) {
+            collectTikTokJsonCandidates(nested, candidates);
+        }
+    }
+}
+
 function collectInstagramJsonCandidates(value: unknown, candidates: string[]) {
     if (Array.isArray(value)) {
         for (const item of value) collectInstagramJsonCandidates(item, candidates);
@@ -1283,6 +1542,23 @@ function scoreInstagramCandidate(text: string) {
     if (/\b(p[eë]rb[eë]r[eë]s|ingredients|hapat|p[eë]rgatitja|method|instructions)\b/i.test(normalized)) {
         score += 600;
     }
+    if (isHashtagsOnly(normalized)) score = 0;
+
+    return score;
+}
+
+function scoreTikTokCandidate(text: string) {
+    if (!text || isGenericTikTokText(text)) return 0;
+
+    const normalized = text.replace(/https?:\/\/[^\s]+/gi, " ").trim();
+    let score = Math.min(normalized.length, 1200);
+
+    if (isRecipeLikeText(normalized)) score += 1600;
+    if (/\n/.test(normalized)) score += 200;
+    if (/\b(p[eë]rb[eë]r[eë]s|ingredients|hapat|p[eë]rgatitja|method|instructions)\b/i.test(normalized)) {
+        score += 600;
+    }
+    if (/\b(follow|like|share|comment|viral|fyp|foryou)\b/i.test(normalized)) score -= 250;
     if (isHashtagsOnly(normalized)) score = 0;
 
     return score;
@@ -2114,6 +2390,10 @@ function compactRawContent(raw: RawContent): RawContent {
 
 function joinContent(parts: (string | undefined)[]) {
     return parts.filter(isNonEmptyString).join("\n\n");
+}
+
+function uniqueStrings(parts: (string | undefined)[]) {
+    return [...new Set(parts.map((part) => part?.trim()).filter(isNonEmptyString))];
 }
 
 function textFromUnknown(value: unknown) {

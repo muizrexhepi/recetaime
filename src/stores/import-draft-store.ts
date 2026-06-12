@@ -18,6 +18,8 @@ export type NeedsInputReason =
   | "NO_CAPTION_TEXT"
   | "ONLY_BARE_SOCIAL_URL"
   | "SOCIAL_PLATFORM_BLOCKED"
+  | "SOCIAL_SCRAPER_NOT_CONFIGURED"
+  | "SOCIAL_SCRAPER_FAILED"
   | "NOT_RECIPE_LIKE"
   | "AI_PARSE_FAILED";
 
@@ -25,11 +27,15 @@ export type DebugExtraction = {
   source:
   | "share_text"
   | "tiktok_oembed"
+  | "tiktok_meta"
   | "instagram_meta"
   | "instagram_embed"
   | "youtube_oembed"
   | "website_json_ld"
   | "website_meta"
+  | "social_scraper"
+  | "image_ocr"
+  | "vision"
   | "none";
   rawTextLength: number;
   resolvedUrl?: string;

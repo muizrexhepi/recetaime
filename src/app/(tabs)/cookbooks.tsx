@@ -1,4 +1,5 @@
 import {
+  IconBoltFilled,
   IconBook,
   IconChefHat,
   IconChevronRight,
@@ -6,8 +7,14 @@ import {
 } from "@tabler/icons-react-native";
 import { useQuery } from "convex/react";
 import { useRouter } from "expo-router";
+import { useRef } from "react";
 import { Pressable, StyleSheet } from "react-native";
 
+import {
+  ImportUsageSheet,
+  type ImportUsageSheetRef,
+  type ImportUsageSummary,
+} from "@/components/sheets/import-usage-sheet";
 import { EmptyTabState } from "@/components/tabs/empty-tab-state";
 import { TabScreen } from "@/components/tabs/tab-screen";
 import { TabScreenHeader } from "@/components/tabs/tab-screen-header";
@@ -34,12 +41,22 @@ type RecipeLike = Partial<GuestRecipe> & {
 export default function CookbooksScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const usageSheetRef = useRef<ImportUsageSheetRef>(null);
 
   const { token, isAuthenticated } = useAuth();
   const guestRecipes = useGuestStore((state) => state.recipes);
 
+  const guestId = useGuestStore(
+    (state) => (state as any).guestId as string | undefined,
+  );
+
   const accountRecipes = useQuery(
     api.recipes.listMine,
+    isAuthenticated && token ? { token } : "skip",
+  );
+
+  const usage = useQuery(
+    api.importUsage.getWeeklyUsage,
     isAuthenticated && token ? { token } : "skip",
   );
 
@@ -63,75 +80,114 @@ export default function CookbooksScreen() {
     } as any);
   };
 
+  const openImport = () => {
+    router.push({
+      pathname: "/import-recipe",
+      params: { mode: "link" },
+    } as any);
+  };
+
+  const openPaywall = () => {
+    router.push("/paywall" as any);
+  };
+
   return (
-    <TabScreen>
-      <TabScreenHeader
-        title="Recetat"
-        subtitle="Recetat e tua të ruajtura, të importuara dhe gati për gatim."
-      />
+    <>
+      <TabScreen>
+        <TabScreenHeader
+          title="Recetat"
+          right={
+            <Pressable
+              onPress={() => usageSheetRef.current?.present()}
+              style={({ pressed }) => [
+                styles.usagePill,
+                {
+                  backgroundColor: theme.primarySoft,
+                  opacity: pressed ? 0.76 : 1,
+                },
+              ]}
+            >
+              <IconBoltFilled size={19} color={theme.primary} />
 
-      {isLoading ? (
-        <ThemedView transparent style={styles.loadingState}>
-          <ThemedText type="body" themeColor="textSecondary">
-            Duke i ngarkuar recetat...
-          </ThemedText>
-        </ThemedView>
-      ) : recipes.length > 0 ? (
-        <ThemedView transparent style={styles.recipeList}>
-          {recipes.map((recipe) => (
-            <RecipeCard
-              key={getRecipeKey(recipe)}
-              recipe={recipe}
-              onPress={() => openRecipe(recipe)}
-            />
-          ))}
-        </ThemedView>
-      ) : (
-        <>
-          <EmptyTabState
-            icon={
-              <IconChefHat size={42} color={theme.primary} strokeWidth={2.1} />
-            }
-            title="Asnjë recetë ende"
-            subtitle="Shto recetën e parë nga link, foto, screenshot ose tekst."
-          />
+              <ThemedText
+                type="smallBold"
+                style={[styles.usageText, { color: theme.primary }]}
+              >
+                {formatUsageLabel(usage)}
+              </ThemedText>
+            </Pressable>
+          }
+        />
 
-          <Pressable
-            onPress={() =>
-              router.push({
-                pathname: "/import-recipe",
-                params: { mode: "link" },
-              } as any)
-            }
-            style={({ pressed }) => [
-              styles.primaryAction,
-              {
-                backgroundColor: theme.primary,
-                opacity: pressed ? 0.86 : 1,
-              },
-            ]}
-          >
-            <IconPlus size={21} color="#FFFFFF" strokeWidth={2.6} />
-            <ThemedText style={styles.primaryActionText}>
-              Shto recetë
+        {isLoading ? (
+          <ThemedView transparent style={styles.loadingState}>
+            <ThemedText type="body" themeColor="textSecondary">
+              Duke i ngarkuar recetat...
             </ThemedText>
-          </Pressable>
-        </>
-      )}
+          </ThemedView>
+        ) : recipes.length > 0 ? (
+          <ThemedView transparent style={styles.recipeList}>
+            {recipes.map((recipe) => (
+              <RecipeCard
+                key={getRecipeKey(recipe)}
+                recipe={recipe}
+                onPress={() => openRecipe(recipe)}
+              />
+            ))}
+          </ThemedView>
+        ) : (
+          <>
+            <EmptyTabState
+              icon={
+                <IconChefHat
+                  size={42}
+                  color={theme.primary}
+                  strokeWidth={2.1}
+                />
+              }
+              title="Asnjë recetë ende"
+              subtitle="Shto recetën e parë nga link, foto, screenshot ose tekst."
+            />
 
-      <ThemedCard style={styles.tipCard}>
-        <IconBook size={22} color={theme.textSecondary} strokeWidth={2.1} />
+            <Pressable
+              onPress={openImport}
+              style={({ pressed }) => [
+                styles.primaryAction,
+                {
+                  backgroundColor: theme.primary,
+                  opacity: pressed ? 0.86 : 1,
+                },
+              ]}
+            >
+              <IconPlus size={21} color="#FFFFFF" strokeWidth={2.6} />
 
-        <ThemedText
-          type="small"
-          themeColor="textSecondary"
-          style={styles.tipText}
-        >
-          Recetat ruhen si karta të pastra me përbërës, hapa dhe burim. Së
-          shpejti mund t’i ndash edhe në koleksione.
-        </ThemedText>
-      </ThemedCard>
-    </TabScreen>
+              <ThemedText style={styles.primaryActionText}>
+                Shto recetë
+              </ThemedText>
+            </Pressable>
+          </>
+        )}
+
+        <ThemedCard style={styles.tipCard}>
+          <IconBook size={22} color={theme.textSecondary} strokeWidth={2.1} />
+
+          <ThemedText
+            type="small"
+            themeColor="textSecondary"
+            style={styles.tipText}
+          >
+            Recetat ruhen si karta të pastra me përbërës, hapa dhe burim. Së
+            shpejti mund t’i ndash edhe në koleksione.
+          </ThemedText>
+        </ThemedCard>
+      </TabScreen>
+
+      <ImportUsageSheet
+        ref={usageSheetRef}
+        usage={usage}
+        onUnlock={openPaywall}
+      />
+    </>
   );
 }
 
@@ -226,6 +282,13 @@ function RecipeCard({
   );
 }
 
+function formatUsageLabel(usage?: ImportUsageSummary) {
+  if (!usage) return "5/5";
+  if (usage.hasUnlimited) return "Pro";
+
+  return `${usage.remaining ?? 0}/${usage.limit}`;
+}
+
 function getRecipeId(recipe: RecipeLike) {
   return recipe._id ?? recipe.localId;
 }
@@ -258,6 +321,19 @@ function sourceLabel(sourceType?: string) {
 }
 
 const styles = StyleSheet.create({
+  usagePill: {
+    minHeight: 42,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.xs,
+  },
+  usageText: {
+    fontSize: 15,
+    lineHeight: 20,
+  },
   loadingState: {
     marginTop: Spacing.xxl,
     alignItems: "center",

@@ -163,10 +163,7 @@ function extractModeFromValue(value: string): ImportMode {
   return /^https?:\/\//i.test(value.trim()) ? "link" : "text";
 }
 
-function mergeSupplementalText(
-  draft: ImportDraft,
-  supplementalText: string,
-): ImportDraft {
+function mergeSupplementalText(draft: ImportDraft, supplementalText: string): ImportDraft {
   const text = supplementalText.trim();
   const sourceText = [draft.sourceText, text]
     .map((part) => part?.trim())
@@ -267,8 +264,7 @@ export default function ImportRecipeScreen() {
   const params = useLocalSearchParams<{ mode?: string; source?: string }>();
   const theme = useTheme();
   const { token, isAuthenticated } = useAuth();
-  const { hasShareIntent, shareIntent, resetShareIntent } =
-    useShareIntentContext();
+  const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntentContext();
 
   const parseImport = useAction(api.imports.parseDraft);
   const createRecipe = useMutation(api.recipes.createFromImport);
@@ -286,12 +282,8 @@ export default function ImportRecipeScreen() {
     [initialMode, storeDraft],
   );
 
-  const [mode, setMode] = useState<ImportMode>(
-    initialDraft.mode ?? initialMode,
-  );
-  const [sourceValue, setSourceValue] = useState(
-    getDraftInputValue(initialDraft),
-  );
+  const [mode, setMode] = useState<ImportMode>(initialDraft.mode ?? initialMode);
+  const [sourceValue, setSourceValue] = useState(getDraftInputValue(initialDraft));
   const [imageUri, setImageUri] = useState(initialDraft.imageUri);
   const [extraText, setExtraText] = useState("");
   const [activeDraft, setActiveDraft] = useState<ImportDraft>(initialDraft);
@@ -304,10 +296,7 @@ export default function ImportRecipeScreen() {
     initialDraft.parsedRecipe?.description ?? "",
   );
   const [ingredientRows, setIngredientRows] = useState<EditableRow[]>(
-    rowsFromText(
-      initialDraft.parsedRecipe?.ingredients.map((i) => i.text).join("\n") ??
-        "",
-    ),
+    rowsFromText(initialDraft.parsedRecipe?.ingredients.map((i) => i.text).join("\n") ?? ""),
   );
   const [stepRows, setStepRows] = useState<EditableRow[]>(
     rowsFromText(initialDraft.parsedRecipe?.steps.join("\n") ?? ""),
@@ -325,14 +314,10 @@ export default function ImportRecipeScreen() {
   const [message, setMessage] = useState<string | null>(null);
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [savedRecipe, setSavedRecipe] = useState<SavedRecipeTarget | null>(
-    null,
-  );
+  const [savedRecipe, setSavedRecipe] = useState<SavedRecipeTarget | null>(null);
   const [showSupplementalInput, setShowSupplementalInput] = useState(false);
   const [appliedDraftId, setAppliedDraftId] = useState(initialDraft.id);
-  const [autoParsedDraftId, setAutoParsedDraftId] = useState<string | null>(
-    null,
-  );
+  const [autoParsedDraftId, setAutoParsedDraftId] = useState<string | null>(null);
   const [shareFallbackReady, setShareFallbackReady] = useState(
     !isShareIntentEntry || Boolean(storeDraft),
   );
@@ -345,8 +330,7 @@ export default function ImportRecipeScreen() {
       : detectSourceType(sourceValue);
 
   const canParse = Boolean(sourceValue.trim() || imageUri);
-  const isReadyForReview =
-    activeDraft.status === "ready_for_review" && reviewRecipe;
+  const isReadyForReview = activeDraft.status === "ready_for_review" && reviewRecipe;
 
   const editedRecipe = useMemo(
     () =>
@@ -442,11 +426,7 @@ export default function ImportRecipeScreen() {
           extraText: supplementalText ?? extraText,
         });
 
-      if (
-        !nextDraft.sourceUrl &&
-        !nextDraft.sourceText &&
-        !nextDraft.imageUri
-      ) {
+      if (!nextDraft.sourceUrl && !nextDraft.sourceText && !nextDraft.imageUri) {
         setMessage("Shto një link, tekst ose foto për importim.");
         return;
       }
@@ -469,9 +449,7 @@ export default function ImportRecipeScreen() {
         setActiveDraft(result);
         patchStoreDraft(result);
         applyParsedRecipe(result.parsedRecipe ?? null);
-        setMessage(
-          result.status === "failed" ? (result.warnings[0] ?? null) : null,
-        );
+        setMessage(result.status === "failed" ? (result.warnings[0] ?? null) : null);
       } catch (error) {
         const failedDraft: ImportDraft = {
           ...nextDraft,
@@ -496,8 +474,7 @@ export default function ImportRecipeScreen() {
 
   useEffect(() => {
     if (!storeDraft || autoParsedDraftId === storeDraft.id) return;
-    if (!storeDraft.sourceUrl && !storeDraft.sourceText && !storeDraft.imageUri)
-      return;
+    if (!storeDraft.sourceUrl && !storeDraft.sourceText && !storeDraft.imageUri) return;
     if (
       storeDraft.status === "ready_for_review" ||
       storeDraft.status === "needs_input" ||
@@ -561,9 +538,7 @@ export default function ImportRecipeScreen() {
     setMode("photo");
     setImageUri(asset.uri);
     setSourceValue("");
-    setActiveDraft(
-      normalizeImportDraft({ mode: "photo", imageUri: asset.uri }),
-    );
+    setActiveDraft(normalizeImportDraft({ mode: "photo", imageUri: asset.uri }));
     applyParsedRecipe(null);
   };
 
@@ -641,12 +616,8 @@ export default function ImportRecipeScreen() {
           ingredients: recipe.ingredients,
           steps: recipe.steps,
           ...(recipe.servings ? { servings: recipe.servings } : {}),
-          ...(recipe.prepTimeMinutes
-            ? { prepTimeMinutes: recipe.prepTimeMinutes }
-            : {}),
-          ...(recipe.cookTimeMinutes
-            ? { cookTimeMinutes: recipe.cookTimeMinutes }
-            : {}),
+          ...(recipe.prepTimeMinutes ? { prepTimeMinutes: recipe.prepTimeMinutes } : {}),
+          ...(recipe.cookTimeMinutes ? { cookTimeMinutes: recipe.cookTimeMinutes } : {}),
           tags: editedRecipe.tags,
           language: editedRecipe.language,
           ...(editedRecipe.cuisine ? { cuisine: editedRecipe.cuisine } : {}),
@@ -672,9 +643,7 @@ export default function ImportRecipeScreen() {
       clearDraft();
     } catch (error) {
       setMessage(
-        error instanceof Error
-          ? error.message
-          : "Nuk mund ta ruanim recetën tani.",
+        error instanceof Error ? error.message : "Nuk mund ta ruanim recetën tani.",
       );
     } finally {
       setSaving(false);
@@ -686,10 +655,7 @@ export default function ImportRecipeScreen() {
     setTitle(parsed?.title ?? "");
     setDescription(parsed?.description ?? "");
     setIngredientRows(
-      rowsFromText(
-        parsed?.ingredients.map((ingredient) => ingredient.text).join("\n") ??
-          "",
-      ),
+      rowsFromText(parsed?.ingredients.map((ingredient) => ingredient.text).join("\n") ?? ""),
     );
     setStepRows(rowsFromText(parsed?.steps.join("\n") ?? ""));
     setServingsText(parsed?.servings?.toString() ?? "");
@@ -722,214 +688,197 @@ export default function ImportRecipeScreen() {
 
       <ThemedView style={styles.container}>
         <SafeAreaView style={styles.safeArea} edges={["bottom"]}>
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            contentInsetAdjustmentBehavior="automatic"
-            contentContainerStyle={styles.content}
-          >
-            {savedRecipe ? (
-              <SavedCard
-                title={savedRecipe.title}
-                source={savedRecipe.source}
-                onView={() =>
-                  router.replace({
-                    pathname: "/recipe/[id]",
-                    params: {
-                      id: savedRecipe.id,
-                      source: savedRecipe.source,
-                    },
-                  } as any)
-                }
-                onBack={() => router.back()}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          contentInsetAdjustmentBehavior="automatic"
+          contentContainerStyle={styles.content}
+        >
+          {savedRecipe ? (
+            <SavedCard
+              title={savedRecipe.title}
+              source={savedRecipe.source}
+              onView={() =>
+                router.replace({
+                  pathname: "/recipe/[id]",
+                  params: {
+                    id: savedRecipe.id,
+                    source: savedRecipe.source,
+                  },
+                } as any)
+              }
+              onBack={() => router.back()}
+            />
+          ) : shouldShowImporting ? (
+            <ImportingPanel draft={activeDraft} />
+          ) : isReadyForReview ? null : (
+            <ThemedView transparent style={styles.hero}>
+              <ThemedView
+                style={[
+                  styles.heroIcon,
+                  {
+                    backgroundColor: theme.primarySoft,
+                    borderColor: theme.border,
+                  },
+                ]}
+              >
+                <IconSparkles
+                  size={28}
+                  color={theme.primary}
+                  strokeWidth={2.5}
+                />
+              </ThemedView>
+
+              <ThemedText type="h2" align="center">{copy.title}</ThemedText>
+
+              <ThemedText color="secondary" align="center" style={styles.subtitle}>
+                {copy.subtitle}
+              </ThemedText>
+            </ThemedView>
+          )}
+
+          {!savedRecipe && !shouldShowImporting && isReadyForReview ? (
+            <ReviewForm
+              title={title}
+              description={description}
+              ingredientRows={ingredientRows}
+              stepRows={stepRows}
+              servingsText={servingsText}
+              prepTimeText={prepTimeText}
+              cookTimeText={cookTimeText}
+              draft={activeDraft}
+              parsed={reviewRecipe}
+              onTitleChange={setTitle}
+              onDescriptionChange={setDescription}
+              onIngredientRowsChange={setIngredientRows}
+              onStepRowsChange={setStepRows}
+              onServingsChange={setServingsText}
+              onPrepTimeChange={setPrepTimeText}
+              onCookTimeChange={setCookTimeText}
+            />
+          ) : null}
+
+          {!savedRecipe && !shouldShowImporting && !isReadyForReview ? (
+            <>
+              <ModeSwitcher
+                mode={mode}
+                onChange={(nextMode) => {
+                  Haptics.selectionAsync();
+                  setMode(nextMode);
+                  setActiveDraft(normalizeImportDraft({ mode: nextMode, value: "" }));
+                  setSourceValue("");
+                  setImageUri(undefined);
+                  setExtraText("");
+                  applyParsedRecipe(null);
+                }}
               />
-            ) : shouldShowImporting ? (
-              <ImportingPanel draft={activeDraft} />
-            ) : isReadyForReview ? null : (
-              <ThemedView transparent style={styles.hero}>
+
+              <ThemedCard
+                style={[
+                  styles.inputCard,
+                  {
+                    backgroundColor: theme.surface,
+                    borderColor: theme.borderLight,
+                  },
+                ]}
+              >
+                <ThemedView transparent style={styles.fieldHeader}>
+                  <FieldLabel label={copy.inputLabel} />
+
+                  {mode !== "photo" ? (
+                    <Pressable onPress={pasteFromClipboard} hitSlop={10}>
+                      <ThemedText style={[styles.pasteText, { color: theme.primary }]}>
+                        Ngjit
+                      </ThemedText>
+                    </Pressable>
+                  ) : null}
+                </ThemedView>
+
+                {mode === "photo" ? (
+                  <PhotoPicker imageUri={imageUri} onPress={choosePhoto} />
+                ) : (
+                  <TextInput
+                    value={sourceValue}
+                    onChangeText={(next) => {
+                      setSourceValue(next);
+                      setActiveDraft(normalizeImportDraft({ mode, value: next }));
+                    }}
+                    placeholder={copy.placeholder}
+                    placeholderTextColor={theme.textTertiary}
+                    multiline={mode !== "link" && mode !== "web"}
+                    autoCapitalize="none"
+                    style={[
+                      styles.input,
+                      mode !== "link" && mode !== "web" && styles.textArea,
+                      {
+                        color: theme.text,
+                        borderColor: theme.border,
+                        backgroundColor: theme.paper,
+                      },
+                    ]}
+                  />
+                )}
+
                 <ThemedView
                   style={[
-                    styles.heroIcon,
+                    styles.sourcePill,
                     {
-                      backgroundColor: theme.primarySoft,
+                      backgroundColor: theme.cardMuted,
                       borderColor: theme.border,
                     },
                   ]}
                 >
-                  <IconSparkles
-                    size={28}
-                    color={theme.primary}
-                    strokeWidth={2.5}
-                  />
+                  <ThemedText color="secondary" style={styles.sourcePillText}>
+                    Burimi: {sourceLabel(sourceType)}
+                  </ThemedText>
                 </ThemedView>
+              </ThemedCard>
 
-                <ThemedText type="h2" align="center">
-                  {copy.title}
-                </ThemedText>
-
-                <ThemedText
-                  color="secondary"
-                  align="center"
-                  style={styles.subtitle}
-                >
-                  {copy.subtitle}
-                </ThemedText>
-              </ThemedView>
-            )}
-
-            {!savedRecipe && !shouldShowImporting && isReadyForReview ? (
-              <ReviewForm
-                title={title}
-                description={description}
-                ingredientRows={ingredientRows}
-                stepRows={stepRows}
-                servingsText={servingsText}
-                prepTimeText={prepTimeText}
-                cookTimeText={cookTimeText}
-                draft={activeDraft}
-                parsed={reviewRecipe}
-                onTitleChange={setTitle}
-                onDescriptionChange={setDescription}
-                onIngredientRowsChange={setIngredientRows}
-                onStepRowsChange={setStepRows}
-                onServingsChange={setServingsText}
-                onPrepTimeChange={setPrepTimeText}
-                onCookTimeChange={setCookTimeText}
-              />
-            ) : null}
-
-            {!savedRecipe && !shouldShowImporting && !isReadyForReview ? (
-              <>
-                <ModeSwitcher
-                  mode={mode}
-                  onChange={(nextMode) => {
-                    Haptics.selectionAsync();
-                    setMode(nextMode);
-                    setActiveDraft(
-                      normalizeImportDraft({ mode: nextMode, value: "" }),
-                    );
-                    setSourceValue("");
-                    setImageUri(undefined);
-                    setExtraText("");
-                    applyParsedRecipe(null);
-                  }}
+              {activeDraft.status === "needs_input" || activeDraft.status === "failed" ? (
+                <FallbackCard
+                  draft={activeDraft}
+                  extraText={extraText}
+                  showTextInput={showSupplementalInput}
+                  onShowTextInput={openSupplementalInput}
+                  onExtraTextChange={setExtraText}
+                  onRetry={retryWithSupplementalText}
+                  onUploadScreenshot={attachScreenshotToDraft}
+                  onCancel={() => router.back()}
+                  parsing={parsing}
                 />
-
-                <ThemedCard
-                  style={[
-                    styles.inputCard,
-                    {
-                      backgroundColor: theme.surface,
-                      borderColor: theme.borderLight,
-                    },
-                  ]}
-                >
-                  <ThemedView transparent style={styles.fieldHeader}>
-                    <FieldLabel label={copy.inputLabel} />
-
-                    {mode !== "photo" ? (
-                      <Pressable onPress={pasteFromClipboard} hitSlop={10}>
-                        <ThemedText
-                          style={[styles.pasteText, { color: theme.primary }]}
-                        >
-                          Ngjit
-                        </ThemedText>
-                      </Pressable>
-                    ) : null}
-                  </ThemedView>
-
-                  {mode === "photo" ? (
-                    <PhotoPicker imageUri={imageUri} onPress={choosePhoto} />
-                  ) : (
-                    <TextInput
-                      value={sourceValue}
-                      onChangeText={(next) => {
-                        setSourceValue(next);
-                        setActiveDraft(
-                          normalizeImportDraft({ mode, value: next }),
-                        );
-                      }}
-                      placeholder={copy.placeholder}
-                      placeholderTextColor={theme.textTertiary}
-                      multiline={mode !== "link" && mode !== "web"}
-                      autoCapitalize="none"
-                      style={[
-                        styles.input,
-                        mode !== "link" && mode !== "web" && styles.textArea,
-                        {
-                          color: theme.text,
-                          borderColor: theme.border,
-                          backgroundColor: theme.paper,
-                        },
-                      ]}
-                    />
-                  )}
-
-                  <ThemedView
-                    style={[
-                      styles.sourcePill,
-                      {
-                        backgroundColor: theme.cardMuted,
-                        borderColor: theme.border,
-                      },
-                    ]}
-                  >
-                    <ThemedText color="secondary" style={styles.sourcePillText}>
-                      Burimi: {sourceLabel(sourceType)}
-                    </ThemedText>
-                  </ThemedView>
-                </ThemedCard>
-
-                {activeDraft.status === "needs_input" ||
-                activeDraft.status === "failed" ? (
-                  <FallbackCard
-                    draft={activeDraft}
-                    extraText={extraText}
-                    showTextInput={showSupplementalInput}
-                    onShowTextInput={openSupplementalInput}
-                    onExtraTextChange={setExtraText}
-                    onRetry={retryWithSupplementalText}
-                    onUploadScreenshot={attachScreenshotToDraft}
-                    onCancel={() => router.back()}
-                    parsing={parsing}
-                  />
-                ) : null}
-              </>
-            ) : null}
-
-            {message ? (
-              <ThemedText selectable color="secondary" style={styles.message}>
-                {message}
-              </ThemedText>
-            ) : null}
-          </ScrollView>
-
-          {!savedRecipe && !shouldShowImporting ? (
-            <ThemedView transparent style={styles.footer}>
-              {isReadyForReview ? (
-                <ThemedButton
-                  title="Ruaj recetën"
-                  onPress={saveRecipe}
-                  disabled={!canSave}
-                  loading={saving}
-                  leftIcon={
-                    <IconCheck size={19} color="#FFFFFF" strokeWidth={3} />
-                  }
-                />
-              ) : (
-                <ThemedButton
-                  title="Analizo recetën"
-                  onPress={() => runParse()}
-                  disabled={!canParse || parsing}
-                  loading={parsing}
-                  leftIcon={
-                    <IconSparkles size={19} color="#FFFFFF" strokeWidth={2.8} />
-                  }
-                />
-              )}
-            </ThemedView>
+              ) : null}
+            </>
           ) : null}
+
+          {message ? (
+            <ThemedText selectable color="secondary" style={styles.message}>
+              {message}
+            </ThemedText>
+          ) : null}
+        </ScrollView>
+
+        {!savedRecipe && !shouldShowImporting ? (
+          <ThemedView transparent style={styles.footer}>
+            {isReadyForReview ? (
+              <ThemedButton
+                title="Ruaj recetën"
+                onPress={saveRecipe}
+                disabled={!canSave}
+                loading={saving}
+                leftIcon={<IconCheck size={19} color="#FFFFFF" strokeWidth={3} />}
+              />
+            ) : (
+              <ThemedButton
+                title="Analizo recetën"
+                onPress={() => runParse()}
+                disabled={!canParse || parsing}
+                loading={parsing}
+                leftIcon={<IconSparkles size={19} color="#FFFFFF" strokeWidth={2.8} />}
+              />
+            )}
+          </ThemedView>
+        ) : null}
         </SafeAreaView>
       </ThemedView>
     </>
@@ -977,11 +926,11 @@ function ReviewForm({
 
   const showTimingFields = Boolean(
     parsed.servings ||
-    parsed.prepTimeMinutes ||
-    parsed.cookTimeMinutes ||
-    servingsText ||
-    prepTimeText ||
-    cookTimeText,
+      parsed.prepTimeMinutes ||
+      parsed.cookTimeMinutes ||
+      servingsText ||
+      prepTimeText ||
+      cookTimeText,
   );
 
   return (
@@ -1154,12 +1103,7 @@ function ReviewForm({
           </ThemedView>
 
           {parsed.ambiguityNotes.map((note) => (
-            <ThemedText
-              key={note}
-              selectable
-              color="secondary"
-              style={styles.warningText}
-            >
+            <ThemedText key={note} selectable color="secondary" style={styles.warningText}>
               · {note}
             </ThemedText>
           ))}
@@ -1229,16 +1173,12 @@ function EditableListSection({
                   { backgroundColor: theme.primarySoft },
                 ]}
               >
-                <ThemedText
-                  style={[styles.stepNumberText, { color: theme.primary }]}
-                >
+                <ThemedText style={[styles.stepNumberText, { color: theme.primary }]}>
                   {index + 1}
                 </ThemedText>
               </ThemedView>
             ) : (
-              <ThemedView
-                style={[styles.bulletDot, { backgroundColor: theme.primary }]}
-              />
+              <ThemedView style={[styles.bulletDot, { backgroundColor: theme.primary }]} />
             )}
 
             <TextInput
@@ -1248,10 +1188,7 @@ function EditableListSection({
               placeholderTextColor={theme.textTertiary}
               multiline
               scrollEnabled={false}
-              style={[
-                numbered ? styles.stepInput : styles.rowInput,
-                { color: theme.text },
-              ]}
+              style={[numbered ? styles.stepInput : styles.rowInput, { color: theme.text }]}
             />
 
             <TouchableOpacity
@@ -1275,11 +1212,7 @@ function EditableListSection({
             },
           ]}
         >
-          <ThemedText
-            color="secondary"
-            align="center"
-            style={styles.emptyStateText}
-          >
+          <ThemedText color="secondary" align="center" style={styles.emptyStateText}>
             Ende nuk ka {label.toLowerCase()}. Shto një më poshtë.
           </ThemedText>
         </ThemedView>
@@ -1329,9 +1262,7 @@ function ConfidenceBadge({ confidence }: { confidence: string }) {
     >
       <ThemedView style={[styles.confidenceDot, { backgroundColor: color }]} />
 
-      <ThemedText style={[styles.confidenceText, { color }]}>
-        {label}
-      </ThemedText>
+      <ThemedText style={[styles.confidenceText, { color }]}>{label}</ThemedText>
     </ThemedView>
   );
 }
@@ -1401,13 +1332,7 @@ function ModeSwitcher({
   );
 }
 
-function PhotoPicker({
-  imageUri,
-  onPress,
-}: {
-  imageUri?: string;
-  onPress: () => void;
-}) {
+function PhotoPicker({ imageUri, onPress }: { imageUri?: string; onPress: () => void }) {
   const theme = useTheme();
 
   return (
@@ -1423,11 +1348,7 @@ function PhotoPicker({
       ]}
     >
       {imageUri ? (
-        <Image
-          source={{ uri: imageUri }}
-          style={styles.photoPreview}
-          contentFit="cover"
-        />
+        <Image source={{ uri: imageUri }} style={styles.photoPreview} contentFit="cover" />
       ) : (
         <>
           <IconPhoto size={32} color={theme.primary} strokeWidth={2.2} />
@@ -1475,16 +1396,10 @@ function FallbackCard({
       ]}
     >
       <ThemedView transparent style={styles.fallbackHeader}>
-        <IconAlertCircle
-          size={22}
-          color={theme.textSecondary}
-          strokeWidth={2.4}
-        />
+        <IconAlertCircle size={22} color={theme.textSecondary} strokeWidth={2.4} />
 
         <ThemedView transparent style={styles.fallbackCopy}>
-          <ThemedText type="cardTitle">
-            Na duhen pak më shumë të dhëna
-          </ThemedText>
+          <ThemedText type="cardTitle">Na duhen pak më shumë të dhëna</ThemedText>
           <ThemedText selectable color="secondary" style={styles.statusText}>
             {fallbackMessageForDraft(draft)}
           </ThemedText>
@@ -1528,11 +1443,7 @@ function FallbackCard({
           onPress={onShowTextInput}
           variant={showTextInput ? "ghost" : "secondary"}
         />
-        <ThemedButton
-          title="Ngarko screenshot"
-          onPress={onUploadScreenshot}
-          variant="outline"
-        />
+        <ThemedButton title="Ngarko screenshot" onPress={onUploadScreenshot} variant="outline" />
         <ThemedButton title="Anulo" onPress={onCancel} variant="ghost" />
       </ThemedView>
     </ThemedCard>
@@ -1545,19 +1456,11 @@ function ImportingPanel({ draft }: { draft: ImportDraft }) {
       <LoadingIllustration />
 
       <ThemedView transparent style={styles.loadingTextBlock}>
-        <ThemedText
-          type="cardTitle"
-          align="center"
-          style={styles.importingTitle}
-        >
+        <ThemedText type="cardTitle" align="center" style={styles.importingTitle}>
           Duke importuar...
         </ThemedText>
 
-        <ThemedText
-          color="secondary"
-          align="center"
-          style={styles.loadingSubtitle}
-        >
+        <ThemedText color="secondary" align="center" style={styles.loadingSubtitle}>
           {importingSubtitle(draft)}
         </ThemedText>
       </ThemedView>
@@ -1677,11 +1580,7 @@ function ShareIntentLoadingScreen() {
         <ThemedView transparent style={styles.loadingWrap}>
           <LoadingIllustration />
 
-          <ThemedText
-            type="cardTitle"
-            align="center"
-            style={styles.importingTitle}
-          >
+          <ThemedText type="cardTitle" align="center" style={styles.importingTitle}>
             Duke importuar...
           </ThemedText>
         </ThemedView>
@@ -1730,9 +1629,7 @@ function SavedCard({
       <ThemedButton
         title="Shiko recetën"
         onPress={onView}
-        rightIcon={
-          <IconArrowRight size={18} color="#FFFFFF" strokeWidth={2.6} />
-        }
+        rightIcon={<IconArrowRight size={18} color="#FFFFFF" strokeWidth={2.6} />}
       />
 
       <ThemedButton

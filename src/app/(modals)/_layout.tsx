@@ -31,6 +31,13 @@ export default function ModalsLayout() {
           title: "Shto vakt",
         }}
       />
+
+      <Stack.Screen
+        name="add-groceries"
+        options={{
+          title: "Shto në listë",
+        }}
+      />
     </Stack>
   );
 }

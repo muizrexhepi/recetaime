@@ -119,6 +119,7 @@ const debugExtraction = v.object({
     source: v.union(
         v.literal("share_text"),
         v.literal("tiktok_oembed"),
+        v.literal("tiktok_meta"),
         v.literal("instagram_meta"),
         v.literal("instagram_embed"),
         v.literal("youtube_oembed"),
@@ -267,6 +268,30 @@ export default defineSchema({
         .index("by_user_date", ["userId", "dateKey"])
         .index("by_user_recipe", ["userId", "recipeId"]),
 
+    groceryItems: defineTable({
+        userId: v.id("users"),
+
+        text: v.string(),
+        amount: v.optional(v.string()),
+        unit: v.optional(v.string()),
+        item: v.optional(v.string()),
+        note: v.optional(v.string()),
+
+        recipeId: v.optional(v.id("recipes")),
+        recipeTitle: v.optional(v.string()),
+
+        sourceDateKey: v.optional(v.string()),
+        mealSlot: v.optional(mealSlot),
+
+        checked: v.boolean(),
+
+        createdAt: v.number(),
+        updatedAt: v.number(),
+    })
+        .index("by_user", ["userId"])
+        .index("by_user_checked", ["userId", "checked"])
+        .index("by_user_created_at", ["userId", "createdAt"]),
+
     importUsage: defineTable({
         userId: v.optional(v.id("users")),
         guestId: v.optional(v.string()),
@@ -275,7 +300,9 @@ export default defineSchema({
         createdAt: v.number(),
     })
         .index("by_user", ["userId"])
-        .index("by_guest", ["guestId"]),
+        .index("by_guest", ["guestId"])
+        .index("by_user_created_at", ["userId", "createdAt"])
+        .index("by_guest_created_at", ["guestId", "createdAt"]),
 
     importCache: defineTable({
         sourceHash: v.string(),

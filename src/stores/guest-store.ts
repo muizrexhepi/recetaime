@@ -84,7 +84,7 @@ type GuestState = {
             GuestRecipe,
             "localId" | "syncStatus" | "createdAt" | "updatedAt"
         >,
-    ) => void;
+    ) => string;
 
     markRecipeSynced: (localId: string, serverId: string) => void;
     markRecipeFailed: (localId: string) => void;
@@ -161,12 +161,13 @@ export const useGuestStore = create<GuestState>()(
 
             addRecipe: (recipe) => {
                 const now = Date.now();
+                const localId = `local_${now}_${Math.random().toString(36).slice(2)}`;
 
                 set((state) => ({
                     recipes: [
                         {
                             ...recipe,
-                            localId: `local_${now}_${Math.random().toString(36).slice(2)}`,
+                            localId,
                             syncStatus: "local_only",
                             createdAt: now,
                             updatedAt: now,
@@ -174,6 +175,8 @@ export const useGuestStore = create<GuestState>()(
                         ...state.recipes,
                     ],
                 }));
+
+                return localId;
             },
 
             markRecipeSynced: (localId, serverId) =>

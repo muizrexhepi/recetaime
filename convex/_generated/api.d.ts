@@ -9,6 +9,8 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as groceries from "../groceries.js";
+import type * as importUsage from "../importUsage.js";
 import type * as imports from "../imports.js";
 import type * as mealPlan from "../mealPlan.js";
 import type * as recipes from "../recipes.js";
@@ -22,6 +24,8 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  groceries: typeof groceries;
+  importUsage: typeof importUsage;
   imports: typeof imports;
   mealPlan: typeof mealPlan;
   recipes: typeof recipes;
