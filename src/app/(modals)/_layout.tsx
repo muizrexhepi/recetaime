@@ -9,7 +9,6 @@ export default function ModalsLayout() {
   return (
     <Stack
       screenOptions={{
-        presentation: "modal",
         headerShown: false,
         headerShadowVisible: false,
         headerTintColor: colors.textPrimary,
@@ -23,21 +22,15 @@ export default function ModalsLayout() {
         contentStyle: {
           backgroundColor: theme.background,
         },
+        gestureEnabled: true,
+        animation: "slide_from_bottom",
       }}
     >
-      <Stack.Screen
-        name="add-meal"
-        options={{
-          title: "Shto vakt",
-        }}
-      />
+      <Stack.Screen name="settings" />
 
-      <Stack.Screen
-        name="add-groceries"
-        options={{
-          title: "Shto në listë",
-        }}
-      />
+      <Stack.Screen name="add-meal" />
+
+      <Stack.Screen name="add-groceries" />
     </Stack>
   );
 }

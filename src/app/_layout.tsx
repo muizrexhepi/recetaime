@@ -151,10 +151,27 @@ function RootNavigation() {
 
       <Stack.Screen
         name="(modals)"
-        options={{ headerShown: false, presentation: "modal" }}
+        options={{
+          headerShown: false,
+          presentation: "modal",
+          animation: "slide_from_bottom",
+          gestureEnabled: true,
+          contentStyle: {
+            backgroundColor: theme.background,
+          },
+        }}
       />
 
-      <Stack.Screen name="import-recipe" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="import-recipe"
+        options={{
+          headerShown: false,
+          animation: "slide_from_right",
+          contentStyle: {
+            backgroundColor: theme.background,
+          },
+        }}
+      />
 
       <Stack.Screen
         name="recipe/[id]"
@@ -162,27 +179,6 @@ function RootNavigation() {
           headerShown: true,
           title: "Receta",
           headerBackTitle: "Recetat",
-          headerShadowVisible: false,
-          headerTintColor: colors.textPrimary,
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerTitleStyle: {
-            fontFamily: Fonts.bold,
-            fontSize: 17,
-          },
-          contentStyle: {
-            backgroundColor: colors.background,
-          },
-        }}
-      />
-
-      <Stack.Screen
-        name="settings"
-        options={{
-          headerShown: true,
-          title: "Cilësimet",
-          headerBackTitle: "Prapa",
           headerShadowVisible: false,
           headerTintColor: colors.textPrimary,
           headerStyle: {

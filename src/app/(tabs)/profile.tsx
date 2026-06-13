@@ -1,28 +1,24 @@
 import {
-  IconBell,
   IconChevronRight,
   IconCrown,
   IconHelp,
-  IconLanguage,
-  IconRefresh,
-  IconShieldLock,
+  IconSettings,
+  IconShare3,
   IconUser,
-  IconUserPlus,
 } from "@tabler/icons-react-native";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import { Alert, Pressable, StyleSheet } from "react-native";
+import { Pressable, Share, StyleSheet, View } from "react-native";
 
 import { TabScreen } from "@/components/tabs/tab-screen";
-import { ThemedButton } from "@/components/ui/themed-button";
-import { ThemedCard } from "@/components/ui/themed-card";
 import { ThemedText } from "@/components/ui/themed-text";
 import { ThemedView } from "@/components/ui/themed-view";
 import { Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/providers/auth-provider";
 import { useGuestStore } from "@/stores/guest-store";
-import { useOnboardingFlowStore } from "@/stores/onboarding-flow-store";
+
+const APP_URL = "https://recetaime.com";
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -34,186 +30,133 @@ export default function ProfileScreen() {
   );
 
   const guestId = useGuestStore((state) => state.guestId);
-  const resetGuest = useGuestStore((state) => state.resetGuest);
-  const resetFlow = useOnboardingFlowStore((state) => state.resetFlow);
+
+  const t = theme as any;
+  const surface = t.surface ?? "#F7F6F2";
+  const primarySoft = t.primarySoft ?? surface;
+  const borderLight = t.borderLight ?? theme.border;
+  const textSecondary = t.textSecondary ?? "#756F66";
+  const textTertiary = t.textTertiary ?? textSecondary;
+  const gold = t.gold ?? "#D89A22";
+  const goldSoft = t.goldSoft ?? "#FFF4D6";
 
   const displayName = hasAccount
     ? getUserName(auth?.user)
     : getGuestName(guestId);
 
   const handleCreateAccount = () => {
+    Haptics.selectionAsync();
     router.push("/onboarding/create-account" as any);
   };
 
   const handleSubscription = () => {
+    Haptics.selectionAsync();
     router.push("/paywall" as any);
   };
 
-  const handleLogout = () => {
-    Alert.alert("Dil nga llogaria?", "Do të dalësh nga kjo pajisje.", [
-      { text: "Anulo", style: "cancel" },
-      {
-        text: "Dil",
-        style: "destructive",
-        onPress: async () => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-          if (typeof auth?.signOut === "function") {
-            await auth.signOut();
-          } else if (typeof auth?.logout === "function") {
-            await auth.logout();
-          }
-
-          router.replace("/onboarding" as any);
-        },
-      },
-    ]);
+  const handleSettings = () => {
+    Haptics.selectionAsync();
+    router.push("/settings" as any);
   };
 
-  const handleResetOnboarding = () => {
-    Alert.alert(
-      "Rinis onboarding?",
-      "Kjo është vetëm për testim gjatë zhvillimit.",
-      [
-        { text: "Anulo", style: "cancel" },
-        {
-          text: "Rinis",
-          style: "destructive",
-          onPress: () => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            resetFlow();
-            resetGuest();
-            router.replace("/onboarding" as any);
-          },
-        },
-      ],
-    );
+  const handleHelp = () => {
+    Haptics.selectionAsync();
+    router.push("/settings" as any);
+  };
+
+  const handleShare = async () => {
+    Haptics.selectionAsync();
+
+    await Share.share({
+      title: "Receta Ime",
+      message:
+        "Provoje Receta Ime — ruaj receta nga TikTok, Instagram, YouTube, foto ose tekst në një vend.\n\n" +
+        APP_URL,
+      url: APP_URL,
+    });
   };
 
   return (
     <TabScreen>
       <ThemedView transparent style={styles.profileHeader}>
-        <ThemedView
-          style={[styles.avatar, { backgroundColor: theme.primarySoft }]}
-        >
+        <View style={[styles.avatar, { backgroundColor: primarySoft }]}>
           <IconUser size={34} color={theme.primary} strokeWidth={2.15} />
-        </ThemedView>
+        </View>
 
         <ThemedText type="title" style={styles.name} numberOfLines={1}>
           {displayName}
         </ThemedText>
 
-        {!hasAccount ? (
+        {hasAccount ? (
+          <View
+            style={[
+              styles.statusPill,
+              { backgroundColor: surface, borderColor: borderLight },
+            ]}
+          >
+            <ThemedText style={[styles.statusText, { color: textSecondary }]}>
+              Llogari aktive
+            </ThemedText>
+          </View>
+        ) : (
           <Pressable onPress={handleCreateAccount} hitSlop={10}>
-            <ThemedText type="bodyMedium" style={{ color: theme.primary }}>
+            <ThemedText
+              style={[styles.createAccount, { color: theme.primary }]}
+            >
               Krijo llogari
             </ThemedText>
           </Pressable>
-        ) : (
-          <ThemedText type="subhead" themeColor="textSecondary">
-            Llogari aktive
-          </ThemedText>
         )}
       </ThemedView>
 
-      <Pressable onPress={handleSubscription}>
-        <ThemedCard style={styles.proCard}>
-          <ThemedView
-            style={[styles.proIcon, { backgroundColor: theme.goldSoft }]}
-          >
-            <IconCrown size={24} color={theme.gold} strokeWidth={2.25} />
-          </ThemedView>
+      <View style={[styles.sectionLine, { backgroundColor: borderLight }]} />
 
-          <ThemedView transparent style={styles.proCopy}>
-            <ThemedText type="cardTitle">Receta Ime Pro</ThemedText>
-            <ThemedText type="subhead" themeColor="textSecondary">
-              Importime pa limit, AI më i mirë dhe mjete të avancuara.
-            </ThemedText>
-          </ThemedView>
+      <ProfileRow
+        icon={
+          <View style={[styles.proIconBox, { backgroundColor: goldSoft }]}>
+            <IconCrown size={23} color={gold} strokeWidth={2.25} />
+          </View>
+        }
+        title="Receta Ime Pro"
+        subtitle="Importime pa limit, kalori & makro, plan vaktesh."
+        onPress={handleSubscription}
+        elevated
+      />
 
-          <IconChevronRight
-            size={21}
-            color={theme.textTertiary}
-            strokeWidth={2.2}
-          />
-        </ThemedCard>
-      </Pressable>
+      <View style={[styles.sectionLine, { backgroundColor: borderLight }]} />
 
-      <ThemedView transparent style={styles.section}>
-        {!hasAccount ? (
-          <ProfileRow
-            icon={
-              <IconUserPlus
-                size={22}
-                color={theme.textSecondary}
-                strokeWidth={2.2}
-              />
-            }
-            title="Krijo llogari"
-            subtitle="Ruaji recetat që të mos humbin."
-            onPress={handleCreateAccount}
-          />
-        ) : null}
+      <ProfileRow
+        icon={
+          <View style={[styles.iconBox, { backgroundColor: surface }]}>
+            <IconShare3 size={21} color={textSecondary} strokeWidth={2.2} />
+          </View>
+        }
+        title="Fto miq"
+        subtitle="Dërgo Receta Ime te dikush që ruan receta."
+        onPress={handleShare}
+      />
 
-        <ProfileRow
-          icon={
-            <IconShieldLock
-              size={22}
-              color={theme.textSecondary}
-              strokeWidth={2.2}
-            />
-          }
-          title="Abonimi im"
-          onPress={handleSubscription}
-        />
+      <ProfileRow
+        icon={
+          <View style={[styles.iconBox, { backgroundColor: surface }]}>
+            <IconHelp size={21} color={textSecondary} strokeWidth={2.2} />
+          </View>
+        }
+        title="Ndihmë"
+        subtitle="Kontakt, feedback, privacy dhe terms."
+        onPress={handleHelp}
+      />
 
-        <ProfileRow
-          icon={
-            <IconLanguage
-              size={22}
-              color={theme.textSecondary}
-              strokeWidth={2.2}
-            />
-          }
-          title="Gjuha"
-        />
-
-        <ProfileRow
-          icon={
-            <IconBell size={22} color={theme.textSecondary} strokeWidth={2.2} />
-          }
-          title="Kujtesat"
-        />
-
-        <ProfileRow
-          icon={
-            <IconHelp size={22} color={theme.textSecondary} strokeWidth={2.2} />
-          }
-          title="Ndihmë"
-        />
-      </ThemedView>
-
-      {__DEV__ ? (
-        <ThemedView transparent style={styles.section}>
-          <ProfileRow
-            icon={
-              <IconRefresh size={22} color={theme.primary} strokeWidth={2.2} />
-            }
-            title="Rinis onboarding"
-            subtitle="Vetëm për testim gjatë zhvillimit."
-            onPress={handleResetOnboarding}
-          />
-        </ThemedView>
-      ) : null}
-
-      {hasAccount ? (
-        <ThemedButton
-          title="Dil"
-          variant="primary"
-          onPress={handleLogout}
-          style={styles.logoutButton}
-        />
-      ) : null}
+      <ProfileRow
+        icon={
+          <View style={[styles.iconBox, { backgroundColor: surface }]}>
+            <IconSettings size={21} color={textSecondary} strokeWidth={2.2} />
+          </View>
+        }
+        title="Cilësimet"
+        subtitle="Llogaria, abonimi dhe preferencat."
+        onPress={handleSettings}
+      />
 
       <ThemedText
         type="subhead"
@@ -231,13 +174,20 @@ function ProfileRow({
   title,
   subtitle,
   onPress,
+  elevated,
 }: {
   icon: React.ReactNode;
   title: string;
   subtitle?: string;
   onPress?: () => void;
+  elevated?: boolean;
 }) {
   const theme = useTheme();
+
+  const t = theme as any;
+  const borderLight = t.borderLight ?? theme.border;
+  const textTertiary = t.textTertiary ?? theme.textSecondary;
+  const primarySoft = t.primarySoft ?? "#F7F6F2";
 
   return (
     <Pressable
@@ -245,31 +195,37 @@ function ProfileRow({
       style={({ pressed }) => [
         styles.row,
         {
-          opacity: pressed ? 0.65 : 1,
+          borderBottomColor: borderLight,
+          opacity: pressed ? 0.58 : 1,
         },
+        elevated
+          ? [
+              styles.proRow,
+              {
+                backgroundColor: primarySoft,
+                borderColor: "rgba(239, 74, 56, 0.18)",
+              },
+            ]
+          : null,
       ]}
     >
-      <ThemedView style={[styles.rowIcon, { backgroundColor: theme.surface }]}>
-        {icon}
-      </ThemedView>
+      {icon}
 
-      <ThemedView transparent style={styles.rowCopy}>
-        <ThemedText type="bodyMedium" style={styles.rowTitle}>
-          {title}
-        </ThemedText>
+      <View style={styles.rowCopy}>
+        <ThemedText style={styles.rowTitle}>{title}</ThemedText>
 
         {subtitle ? (
-          <ThemedText type="subhead" themeColor="textSecondary">
+          <ThemedText
+            type="subhead"
+            themeColor="textSecondary"
+            style={styles.rowSubtitle}
+          >
             {subtitle}
           </ThemedText>
         ) : null}
-      </ThemedView>
+      </View>
 
-      <IconChevronRight
-        size={20}
-        color={theme.textTertiary}
-        strokeWidth={2.2}
-      />
+      <IconChevronRight size={21} color={textTertiary} strokeWidth={2.3} />
     </Pressable>
   );
 }
@@ -285,65 +241,81 @@ function getUserName(user: unknown) {
 function getGuestName(guestId?: string) {
   const suffix = guestId?.split("_").at(-1)?.slice(0, 3);
 
-  if (!suffix) return "mysafir";
+  if (!suffix) return "Mysafir";
 
-  return `mysafir-${suffix}`;
+  return `Mysafir-${suffix}`;
 }
 
 const styles = StyleSheet.create({
   profileHeader: {
     alignItems: "center",
-    paddingTop: Spacing.lg,
+    paddingTop: Spacing.xl,
     paddingBottom: Spacing.xxl,
     gap: Spacing.xs,
   },
   avatar: {
-    width: 84,
-    height: 84,
+    width: 86,
+    height: 86,
     borderRadius: Radius.full,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.md,
   },
   name: {
-    fontSize: 24,
-    lineHeight: 30,
+    maxWidth: "90%",
+    fontSize: 31,
+    lineHeight: 38,
     textAlign: "center",
   },
-  proCard: {
-    padding: Spacing.lg,
-    borderRadius: Radius.xl,
+  statusPill: {
+    marginTop: Spacing.xs,
+    borderRadius: Radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+  },
+  statusText: {
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: "800",
+  },
+  createAccount: {
+    marginTop: Spacing.xs,
+    fontSize: 17,
+    lineHeight: 23,
+    fontWeight: "800",
+  },
+  sectionLine: {
+    height: StyleSheet.hairlineWidth,
+    marginHorizontal: -Spacing.xl,
+  },
+  row: {
+    minHeight: 76,
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  proIcon: {
-    width: 48,
-    height: 48,
+  proRow: {
+    minHeight: 92,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: Radius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  iconBox: {
+    width: 46,
+    height: 46,
     borderRadius: Radius.md,
     alignItems: "center",
     justifyContent: "center",
   },
-  proCopy: {
-    flex: 1,
-    gap: 2,
-  },
-  section: {
-    marginTop: Spacing.xl,
-    paddingTop: Spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(39, 31, 23, 0.10)",
-  },
-  row: {
-    minHeight: 70,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.md,
-  },
-  rowIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: Radius.md,
+  proIconBox: {
+    width: 52,
+    height: 52,
+    borderRadius: Radius.lg,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -352,16 +324,18 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   rowTitle: {
-    fontSize: 20,
-    lineHeight: 26,
+    fontSize: 19,
+    lineHeight: 25,
+    fontWeight: "800",
   },
-  logoutButton: {
-    marginTop: Spacing.xxxl,
-    alignSelf: "center",
-    width: "78%",
+  rowSubtitle: {
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: "700",
   },
   version: {
     marginTop: Spacing.xxl,
+    marginBottom: Spacing.xxl,
     textAlign: "center",
   },
 });

@@ -1,64 +1,92 @@
 import { IconChevronRight } from "@tabler/icons-react-native";
-import React from "react";
-import { Pressable, StyleSheet } from "react-native";
+import type { ReactNode } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
 
 import { ThemedText } from "@/components/ui/themed-text";
-import { ThemedView } from "@/components/ui/themed-view";
 import { Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 
 type SettingsRowProps = {
-  icon: React.ReactNode;
+  icon: ReactNode;
   title: string;
   subtitle?: string;
+  value?: string;
   onPress?: () => void;
+  right?: ReactNode;
   destructive?: boolean;
+  disabled?: boolean;
+  showChevron?: boolean;
 };
 
 export function SettingsRow({
   icon,
   title,
   subtitle,
+  value,
   onPress,
+  right,
   destructive,
+  disabled,
+  showChevron = true,
 }: SettingsRowProps) {
   const theme = useTheme();
 
+  const t = theme as any;
+  const surface = t.surface ?? "#F7F6F2";
+  const borderLight = t.borderLight ?? theme.border;
+  const textSecondary = t.textSecondary ?? "#756F66";
+  const textTertiary = t.textTertiary ?? textSecondary;
+
+  const canPress = Boolean(onPress) && !disabled;
+
   return (
     <Pressable
+      disabled={!canPress}
       onPress={onPress}
-      style={({ pressed }) => [styles.row, { opacity: pressed ? 0.65 : 1 }]}
+      style={({ pressed }) => [
+        styles.row,
+        {
+          borderBottomColor: borderLight,
+          opacity: disabled ? 0.45 : pressed ? 0.58 : 1,
+        },
+      ]}
     >
-      <ThemedView
-        style={[
-          styles.iconBox,
-          { backgroundColor: destructive ? theme.errorSubtle : theme.surface },
-        ]}
-      >
+      <View style={[styles.iconWrap, { backgroundColor: surface }]}>
         {icon}
-      </ThemedView>
+      </View>
 
-      <ThemedView transparent style={styles.copy}>
+      <View style={styles.copy}>
         <ThemedText
-          type="bodyMedium"
-          style={[styles.title, destructive ? { color: theme.danger } : null]}
+          style={[styles.title, destructive ? { color: "#D9422F" } : null]}
         >
           {title}
         </ThemedText>
 
         {subtitle ? (
-          <ThemedText type="subhead" themeColor="textSecondary">
+          <ThemedText
+            type="subhead"
+            themeColor="textSecondary"
+            style={styles.subtitle}
+          >
             {subtitle}
           </ThemedText>
         ) : null}
-      </ThemedView>
+      </View>
 
-      {!destructive ? (
-        <IconChevronRight
-          size={20}
-          color={theme.textTertiary}
-          strokeWidth={2.2}
-        />
+      {value ? (
+        <ThemedText
+          type="subhead"
+          style={[styles.value, { color: textSecondary }]}
+          numberOfLines={1}
+        >
+          {value}
+        </ThemedText>
+      ) : null}
+
+      {right ? right : null}
+
+      {showChevron && canPress ? (
+        <IconChevronRight size={20} color={textTertiary} strokeWidth={2.3} />
       ) : null}
     </Pressable>
   );
@@ -66,24 +94,38 @@ export function SettingsRow({
 
 const styles = StyleSheet.create({
   row: {
-    minHeight: 70,
+    minHeight: 66,
+    paddingHorizontal: Spacing.xl,
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  iconBox: {
-    width: 46,
-    height: 46,
+  iconWrap: {
+    width: 40,
+    height: 40,
     borderRadius: Radius.md,
     alignItems: "center",
     justifyContent: "center",
   },
   copy: {
     flex: 1,
-    gap: 2,
+    gap: 1,
   },
   title: {
-    fontSize: 20,
-    lineHeight: 26,
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: "800",
+  },
+  subtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
+  },
+  value: {
+    maxWidth: 110,
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: "800",
   },
 });

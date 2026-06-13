@@ -5,15 +5,24 @@ import {
   IconCheck,
   IconChefHat,
   IconClipboardList,
+  IconCrown,
   IconPhoto,
   IconShoppingCart,
   IconSparkles,
   IconX,
 } from "@tabler/icons-react-native";
-import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import {
+  Alert,
+  Linking,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ThemedButton } from "@/components/ui/themed-button";
@@ -35,51 +44,58 @@ type Plan = {
   helper: string;
 };
 
+const TERMS_URL = "https://recetaime.com/terms";
+const PRIVACY_URL = "https://recetaime.com/privacy";
+
 const PLANS: Plan[] = [
   {
     id: "monthly",
     title: "Mujore",
     subtitle: "Fleksibile",
-    price: "€2.99",
+    price: "€3.99",
     period: "/ muaj",
-    helper: "Anulo kurdo.",
+    helper: "Pa provë falas. Anulo kurdo.",
   },
   {
     id: "yearly",
     title: "Vjetore",
     subtitle: "Më e mira",
-    price: "€25.99",
+    price: "€29.99",
     period: "/ vit",
     badge: "7 ditë provë falas",
-    helper: "Rreth €2.17 në muaj.",
+    helper: "Vetëm €2.49 në muaj.",
   },
 ];
 
 const FEATURES = [
   {
     title: "Importime pa limit",
-    subtitle:
-      "Ruaj receta nga Instagram, TikTok, YouTube, web, foto dhe tekst.",
+    subtitle: "Nga TikTok, Instagram, YouTube, web, foto dhe tekst.",
     icon: "imports",
   },
   {
+    title: "Kalori & makro",
+    subtitle: "Vlerësime për kalori, proteina, karbohidrate dhe yndyra.",
+    icon: "nutrition",
+  },
+  {
     title: "Lista blerjeje",
-    subtitle: "Kthe përbërësit në listë të organizuar për market.",
+    subtitle: "Kthe përbërësit në listë të organizuar.",
     icon: "groceries",
   },
   {
     title: "Plan vaktesh",
-    subtitle: "Planifiko javën me receta të ruajtura.",
+    subtitle: "Planifiko javën me recetat e tua.",
     icon: "calendar",
   },
   {
     title: "Cook mode",
-    subtitle: "Gatuaj me hapa të pastër dhe të lehtë për t’u ndjekur.",
+    subtitle: "Hapa të pastër kur je duke gatuar.",
     icon: "cook",
   },
   {
     title: "Import nga foto",
-    subtitle: "Përdor screenshot ose foto kur nuk ke link të plotë.",
+    subtitle: "Përdor screenshot ose foto kur nuk ke link.",
     icon: "photo",
   },
 ];
@@ -97,45 +113,63 @@ export default function PaywallScreen() {
   const cardMuted = t.cardMuted ?? surface;
   const border = t.border ?? "#E8E4DC";
   const borderLight = t.borderLight ?? border;
-  const borderStrong = t.borderStrong ?? border;
-  const primarySoft = t.primarySoft ?? surface;
-  const primaryDark = t.primaryDark ?? theme.primary;
   const textSecondary = t.textSecondary ?? "#756F66";
   const textTertiary = t.textTertiary ?? textSecondary;
+  const primarySoft = t.primarySoft ?? "#FFF0ED";
+  const primaryDark = t.primaryDark ?? theme.primary;
 
   const currentPlan = useMemo(
     () => PLANS.find((plan) => plan.id === selectedPlan) ?? PLANS[1],
     [selectedPlan],
   );
 
+  const isYearly = selectedPlan === "yearly";
+
+  const handleClose = () => {
+    Haptics.selectionAsync();
+    router.back();
+  };
+
   const handleContinue = () => {
-    // TODO: connect this to RevenueCat purchasePackage(...)
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    // TODO: connect to RevenueCat purchasePackage(...)
     router.back();
   };
 
   const handleRestore = () => {
-    // TODO: connect this to RevenueCat restorePurchases()
+    Haptics.selectionAsync();
+
+    // TODO: connect to RevenueCat restorePurchases()
+    Alert.alert("Rikthe blerjet", "Kjo do të lidhet me RevenueCat.");
+  };
+
+  const openUrl = (url: string) => {
+    Haptics.selectionAsync();
+    Linking.openURL(url);
   };
 
   return (
     <ThemedView style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+
       <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
         <View style={styles.topBar}>
           <Pressable
-            onPress={() => router.back()}
+            onPress={handleClose}
             hitSlop={12}
             style={({ pressed }) => [
               styles.closeButton,
               {
                 backgroundColor: cardMuted,
-                opacity: pressed ? 0.72 : 1,
+                opacity: pressed ? 0.7 : 1,
               },
             ]}
           >
-            <IconX size={22} color={textSecondary} strokeWidth={2.4} />
+            <IconX size={24} color={textSecondary} strokeWidth={2.7} />
           </Pressable>
 
-          <Pressable onPress={handleRestore} hitSlop={10}>
+          <Pressable onPress={handleRestore} hitSlop={12}>
             <ThemedText style={[styles.restoreText, { color: textSecondary }]}>
               Rikthe
             </ThemedText>
@@ -147,18 +181,28 @@ export default function PaywallScreen() {
           contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={styles.content}
         >
-          <LinearGradient
-            colors={["#FFF2EE", "#FFFFFF"]}
-            start={{ x: 0.2, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.heroCard, { borderColor: borderLight }]}
+          <View
+            style={[
+              styles.heroCard,
+              {
+                backgroundColor: "#FFF0ED",
+                borderColor: borderLight,
+              },
+            ]}
           >
-            <View style={[styles.heroIcon, { backgroundColor: primarySoft }]}>
-              <IconChefHat size={42} color={theme.primary} strokeWidth={2.1} />
+            <View
+              style={[
+                styles.heroIcon,
+                { backgroundColor: "rgba(239, 74, 56, 0.10)" },
+              ]}
+            >
+              <IconChefHat size={42} color={theme.primary} strokeWidth={2.15} />
             </View>
 
             <View style={styles.heroCopy}>
-              <ThemedText style={styles.eyebrow}>RECETA IME PRO</ThemedText>
+              <ThemedText style={[styles.eyebrow, { color: theme.primary }]}>
+                RECETA IME PRO
+              </ThemedText>
 
               <ThemedText style={styles.title}>
                 Ruaj çdo recetë pa kufizime
@@ -173,15 +217,25 @@ export default function PaywallScreen() {
             <View style={styles.heroStats}>
               <MiniStat value="∞" label="importe" />
               <MiniStat value="5+" label="mjete" />
-              <MiniStat value="7d" label="provë" />
+              <MiniStat
+                value={isYearly ? "7d" : "€3.99"}
+                label={isYearly ? "provë" : "muaj"}
+              />
             </View>
-          </LinearGradient>
+          </View>
 
-          <View style={styles.freeUsageCard}>
+          <View
+            style={[
+              styles.freeUsageCard,
+              {
+                backgroundColor: "#FFF8D8",
+              },
+            ]}
+          >
             <View
-              style={[styles.freeUsageIcon, { backgroundColor: primarySoft }]}
+              style={[styles.freeUsageIcon, { backgroundColor: "#FFE7BF" }]}
             >
-              <IconBoltFilled size={22} color={theme.primary} />
+              <IconBoltFilled size={23} color={theme.primary} />
             </View>
 
             <View style={styles.freeUsageCopy}>
@@ -192,7 +246,7 @@ export default function PaywallScreen() {
               <ThemedText
                 style={[styles.freeUsageSubtitle, { color: textSecondary }]}
               >
-                Pro zhbllokon importe pa limit dhe rrjedhë më të shpejtë.
+                Pro zhbllokon importe pa limit dhe veçori të avancuara.
               </ThemedText>
             </View>
           </View>
@@ -206,11 +260,72 @@ export default function PaywallScreen() {
                   key={plan.id}
                   plan={plan}
                   selected={selected}
-                  onPress={() => setSelectedPlan(plan.id)}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setSelectedPlan(plan.id);
+                  }}
                 />
               );
             })}
           </View>
+
+          {isYearly ? (
+            <ThemedCard
+              variant="outline"
+              style={[
+                styles.trialCard,
+                {
+                  backgroundColor: paper,
+                  borderColor: borderLight,
+                },
+              ]}
+            >
+              <View style={styles.trialHeader}>
+                <View
+                  style={[styles.trialIcon, { backgroundColor: primarySoft }]}
+                >
+                  <IconSparkles
+                    size={21}
+                    color={theme.primary}
+                    strokeWidth={2.35}
+                  />
+                </View>
+
+                <View style={styles.trialHeaderCopy}>
+                  <ThemedText style={styles.trialTitle}>
+                    Si funksionon prova falas
+                  </ThemedText>
+
+                  <ThemedText
+                    style={[styles.trialSubtitle, { color: textSecondary }]}
+                  >
+                    Nuk paguan sot.
+                  </ThemedText>
+                </View>
+              </View>
+
+              <View style={styles.trialSteps}>
+                <TrialStep
+                  number="1"
+                  title="Sot"
+                  text="Zhbllokon të gjitha veçoritë Pro."
+                />
+
+                <TrialStep
+                  number="2"
+                  title="Para përfundimit"
+                  text="Mund ta anulosh para se të fillojë pagesa."
+                />
+
+                <TrialStep
+                  number="3"
+                  title="Pas 7 ditësh"
+                  text="Pastaj €29.99/vit nëse vazhdon."
+                  last
+                />
+              </View>
+            </ThemedCard>
+          ) : null}
 
           <ThemedCard
             variant="outline"
@@ -229,16 +344,12 @@ export default function PaywallScreen() {
                   { backgroundColor: primarySoft },
                 ]}
               >
-                <IconSparkles
-                  size={20}
-                  color={theme.primary}
-                  strokeWidth={2.3}
-                />
+                <IconCrown size={20} color={theme.primary} strokeWidth={2.35} />
               </View>
 
               <View style={styles.featureHeaderCopy}>
                 <ThemedText style={styles.featureHeaderTitle}>
-                  Çfarë merr me Pro
+                  Çfarë zhbllokon
                 </ThemedText>
 
                 <ThemedText
@@ -247,13 +358,12 @@ export default function PaywallScreen() {
                     { color: textSecondary },
                   ]}
                 >
-                  Gjithçka që duhet për të ndërtuar bibliotekën tënde të
-                  recetave.
+                  Gjithçka për të ruajtur, planifikuar dhe gatuar më lehtë.
                 </ThemedText>
               </View>
             </View>
 
-            <View style={styles.featureList}>
+            <View style={styles.featureGrid}>
               {FEATURES.map((feature) => (
                 <FeatureRow key={feature.title} feature={feature} />
               ))}
@@ -270,12 +380,14 @@ export default function PaywallScreen() {
               },
             ]}
           >
-            <IconCheck size={20} color={theme.primary} strokeWidth={2.6} />
+            <IconCheck size={20} color={theme.primary} strokeWidth={2.8} />
 
             <ThemedText
               style={[styles.guaranteeText, { color: textSecondary }]}
             >
-              Pa pagesë sot me planin vjetor. Mund ta anulosh provën kurdo.
+              {isYearly
+                ? "Pa pagesë sot me planin vjetor. Mund ta anulosh kurdo para përfundimit të provës."
+                : "Plani mujor nuk ka provë falas. Mund ta anulosh kurdo."}
             </ThemedText>
           </ThemedCard>
         </ScrollView>
@@ -291,33 +403,59 @@ export default function PaywallScreen() {
         >
           <View style={styles.footerCopy}>
             <ThemedText style={styles.footerTitle}>
-              {selectedPlan === "yearly"
+              {isYearly
                 ? "7 ditë provë falas"
-                : currentPlan.price}
+                : `${currentPlan.price} ${currentPlan.period}`}
             </ThemedText>
 
             <ThemedText
               style={[styles.footerSubtitle, { color: textSecondary }]}
             >
-              {selectedPlan === "yearly"
-                ? "Pastaj €25.99/vit. Anulo kurdo."
-                : "Faturohet çdo muaj. Anulo kurdo."}
+              {isYearly
+                ? "Pastaj €29.99/vit. Anulo kurdo."
+                : "Pa provë falas. Anulo kurdo."}
             </ThemedText>
           </View>
 
           <ThemedButton
-            title={
-              selectedPlan === "yearly"
-                ? "Fillo provën falas"
-                : "Vazhdo me planin mujor"
-            }
+            title={isYearly ? "Fillo provën falas" : "Vazhdo me planin mujor"}
             onPress={handleContinue}
             style={styles.cta}
           />
 
           <ThemedText style={[styles.legal, { color: textTertiary }]}>
-            Duke vazhduar pranon kushtet e përdorimit dhe privatësinë.
+            {isYearly
+              ? "Pa pagesë sot. Duke vazhduar pranon kushtet e përdorimit dhe privatësinë."
+              : "Duke vazhduar pranon kushtet e përdorimit dhe privatësinë."}
           </ThemedText>
+
+          <View style={styles.footerLinks}>
+            <Pressable onPress={() => openUrl(TERMS_URL)} hitSlop={10}>
+              <ThemedText style={[styles.footerLink, { color: textTertiary }]}>
+                Terms
+              </ThemedText>
+            </Pressable>
+
+            <View
+              style={[styles.footerDot, { backgroundColor: textTertiary }]}
+            />
+
+            <Pressable onPress={() => openUrl(PRIVACY_URL)} hitSlop={10}>
+              <ThemedText style={[styles.footerLink, { color: textTertiary }]}>
+                Privacy
+              </ThemedText>
+            </Pressable>
+
+            <View
+              style={[styles.footerDot, { backgroundColor: textTertiary }]}
+            />
+
+            <Pressable onPress={handleRestore} hitSlop={10}>
+              <ThemedText style={[styles.footerLink, { color: textTertiary }]}>
+                Restore
+              </ThemedText>
+            </Pressable>
+          </View>
         </ThemedView>
       </SafeAreaView>
     </ThemedView>
@@ -408,6 +546,50 @@ function PlanCard({
   );
 }
 
+function TrialStep({
+  number,
+  title,
+  text,
+  last,
+}: {
+  number: string;
+  title: string;
+  text: string;
+  last?: boolean;
+}) {
+  const theme = useTheme();
+
+  const t = theme as any;
+  const primarySoft = t.primarySoft ?? "#FFF0ED";
+  const textSecondary = t.textSecondary ?? "#756F66";
+  const borderLight = t.borderLight ?? theme.border;
+
+  return (
+    <View style={styles.trialStep}>
+      <View style={styles.trialNumberWrap}>
+        {!last ? (
+          <View style={[styles.trialLine, { backgroundColor: borderLight }]} />
+        ) : null}
+
+        <View style={[styles.trialNumber, { backgroundColor: primarySoft }]}>
+          <ThemedText
+            style={[styles.trialNumberText, { color: theme.primary }]}
+          >
+            {number}
+          </ThemedText>
+        </View>
+      </View>
+
+      <View style={styles.trialStepCopy}>
+        <ThemedText style={styles.trialStepTitle}>{title}</ThemedText>
+        <ThemedText style={[styles.trialStepText, { color: textSecondary }]}>
+          {text}
+        </ThemedText>
+      </View>
+    </View>
+  );
+}
+
 function FeatureRow({
   feature,
 }: {
@@ -420,7 +602,7 @@ function FeatureRow({
   const theme = useTheme();
 
   const t = theme as any;
-  const primarySoft = t.primarySoft ?? "#F7F6F2";
+  const primarySoft = t.primarySoft ?? "#FFF0ED";
   const textSecondary = t.textSecondary ?? "#756F66";
 
   return (
@@ -442,26 +624,30 @@ function FeatureRow({
 
 function FeatureIcon({ type, color }: { type: string; color: string }) {
   if (type === "imports") {
-    return <IconClipboardList size={20} color={color} strokeWidth={2.3} />;
+    return <IconClipboardList size={19} color={color} strokeWidth={2.3} />;
+  }
+
+  if (type === "nutrition") {
+    return <IconSparkles size={19} color={color} strokeWidth={2.3} />;
   }
 
   if (type === "groceries") {
-    return <IconShoppingCart size={20} color={color} strokeWidth={2.3} />;
+    return <IconShoppingCart size={19} color={color} strokeWidth={2.3} />;
   }
 
   if (type === "calendar") {
-    return <IconCalendar size={20} color={color} strokeWidth={2.3} />;
+    return <IconCalendar size={19} color={color} strokeWidth={2.3} />;
   }
 
   if (type === "cook") {
-    return <IconChefHat size={20} color={color} strokeWidth={2.3} />;
+    return <IconChefHat size={19} color={color} strokeWidth={2.3} />;
   }
 
   if (type === "photo") {
-    return <IconPhoto size={20} color={color} strokeWidth={2.3} />;
+    return <IconPhoto size={19} color={color} strokeWidth={2.3} />;
   }
 
-  return <IconCameraFilled size={20} color={color} />;
+  return <IconCameraFilled size={19} color={color} />;
 }
 
 function MiniStat({ value, label }: { value: string; label: string }) {
@@ -481,15 +667,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   topBar: {
-    height: 54,
+    height: 58,
     paddingHorizontal: Spacing.xl,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
   closeButton: {
-    width: 42,
-    height: 42,
+    width: 46,
+    height: 46,
     borderRadius: Radius.full,
     alignItems: "center",
     justifyContent: "center",
@@ -502,8 +688,8 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.md,
-    paddingBottom: 210,
+    paddingTop: Spacing.sm,
+    paddingBottom: 260,
   },
   heroCard: {
     width: "100%",
@@ -516,8 +702,8 @@ const styles = StyleSheet.create({
     ...Shadows.soft,
   },
   heroIcon: {
-    width: 92,
-    height: 92,
+    width: 88,
+    height: 88,
     borderRadius: Radius.xxl,
     alignItems: "center",
     justifyContent: "center",
@@ -532,13 +718,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     fontWeight: "900",
-    letterSpacing: 1.2,
-    color: "#EF4A38",
+    letterSpacing: 1.4,
   },
   title: {
     fontFamily: Fonts.bold,
-    fontSize: 36,
-    lineHeight: 40,
+    fontSize: 34,
+    lineHeight: 38,
     fontWeight: "900",
     letterSpacing: -1,
     textAlign: "center",
@@ -547,7 +732,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 16,
     lineHeight: 23,
-    fontWeight: "600",
+    fontWeight: "700",
     textAlign: "center",
   },
   heroStats: {
@@ -558,9 +743,9 @@ const styles = StyleSheet.create({
   },
   miniStat: {
     flex: 1,
-    minHeight: 72,
+    minHeight: 68,
     borderRadius: Radius.xl,
-    backgroundColor: "rgba(255,255,255,0.72)",
+    backgroundColor: "rgba(255,255,255,0.58)",
     alignItems: "center",
     justifyContent: "center",
     gap: 2,
@@ -575,21 +760,20 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 12,
     lineHeight: 16,
-    fontWeight: "700",
+    fontWeight: "800",
     color: "#756F66",
   },
   freeUsageCard: {
     marginTop: Spacing.lg,
     borderRadius: Radius.xl,
     padding: Spacing.lg,
-    backgroundColor: "#FFF8D8",
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.md,
   },
   freeUsageIcon: {
-    width: 46,
-    height: 46,
+    width: 48,
+    height: 48,
     borderRadius: Radius.lg,
     alignItems: "center",
     justifyContent: "center",
@@ -608,7 +792,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 13,
     lineHeight: 18,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   plans: {
     width: "100%",
@@ -687,6 +871,90 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontWeight: "700",
   },
+  trialCard: {
+    width: "100%",
+    marginTop: Spacing.xl,
+    padding: Spacing.lg,
+    borderRadius: Radius.xxl,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: Spacing.lg,
+    ...Shadows.soft,
+  },
+  trialHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.md,
+  },
+  trialIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.lg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  trialHeaderCopy: {
+    flex: 1,
+    gap: 1,
+  },
+  trialTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: "900",
+  },
+  trialSubtitle: {
+    fontFamily: Fonts.medium,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
+  },
+  trialSteps: {
+    gap: Spacing.md,
+  },
+  trialStep: {
+    flexDirection: "row",
+    gap: Spacing.md,
+  },
+  trialNumberWrap: {
+    width: 36,
+    alignItems: "center",
+  },
+  trialLine: {
+    position: "absolute",
+    top: 31,
+    bottom: -18,
+    width: 2,
+    borderRadius: Radius.full,
+  },
+  trialNumber: {
+    width: 32,
+    height: 32,
+    borderRadius: Radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  trialNumberText: {
+    fontFamily: Fonts.bold,
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: "900",
+  },
+  trialStepCopy: {
+    flex: 1,
+    gap: 1,
+  },
+  trialStepTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "900",
+  },
+  trialStepText: {
+    fontFamily: Fonts.medium,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
+  },
   featureCard: {
     width: "100%",
     marginTop: Spacing.xl,
@@ -721,9 +989,9 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 13,
     lineHeight: 18,
-    fontWeight: "600",
+    fontWeight: "700",
   },
-  featureList: {
+  featureGrid: {
     gap: Spacing.md,
   },
   featureRow: {
@@ -732,15 +1000,15 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   featureIcon: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     borderRadius: Radius.md,
     alignItems: "center",
     justifyContent: "center",
   },
   featureCopy: {
     flex: 1,
-    gap: 2,
+    gap: 1,
   },
   featureTitle: {
     fontFamily: Fonts.bold,
@@ -752,7 +1020,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 13,
     lineHeight: 18,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   guaranteeCard: {
     width: "100%",
@@ -778,7 +1046,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.md,
-    paddingBottom: Spacing.xl,
+    paddingBottom: Spacing.lg,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   footerCopy: {
@@ -796,7 +1064,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 12,
     lineHeight: 17,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   cta: {
     minHeight: 58,
@@ -806,7 +1074,26 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 11,
     lineHeight: 15,
-    fontWeight: "600",
+    fontWeight: "700",
     textAlign: "center",
+  },
+  footerLinks: {
+    marginTop: Spacing.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.sm,
+  },
+  footerLink: {
+    fontFamily: Fonts.medium,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: "800",
+  },
+  footerDot: {
+    width: 3,
+    height: 3,
+    borderRadius: Radius.full,
+    opacity: 0.55,
   },
 });
