@@ -31,6 +31,10 @@ export default function ModalsLayout() {
       <Stack.Screen name="add-meal" />
 
       <Stack.Screen name="add-groceries" />
+
+      <Stack.Screen name="manage-recipe-cookbooks" />
+
+      <Stack.Screen name="add-to-cookbook" />
     </Stack>
   );
 }

@@ -62,7 +62,7 @@ export const listMine = query({
             .query("recipes")
             .withIndex("by_user_created_at", (q) => q.eq("userId", user._id))
             .order("desc")
-            .take(50);
+            .take(100);
     },
 });
 
@@ -82,7 +82,21 @@ export const getMineById = query({
             return null;
         }
 
-        return recipe;
+        const collections = recipe.collectionIds?.length
+            ? await Promise.all(recipe.collectionIds.map((id) => ctx.db.get(id)))
+            : [];
+
+        return {
+            ...recipe,
+            collections: collections
+                .filter((collection) => collection && collection.userId === user._id)
+                .map((collection) => ({
+                    _id: collection!._id,
+                    title: collection!.title,
+                    color: collection!.color,
+                    icon: collection!.icon,
+                })),
+        };
     },
 });
 
@@ -106,6 +120,7 @@ export const createFromImport = mutation({
         ambiguityNotes: v.optional(v.array(v.string())),
         needsUserReview: v.optional(v.boolean()),
         importConfidence: v.optional(confidence),
+        collectionIds: v.optional(v.array(v.id("collections"))),
     },
     handler: async (ctx, args) => {
         const user = await getUserFromToken(ctx, args.token);
@@ -129,9 +144,23 @@ export const createFromImport = mutation({
             ingredients.length === 0 ||
             steps.length === 0
         ) {
-            throw new Error(
-                "Recipe is incomplete. Review the import before saving.",
+            throw new Error("Recipe is incomplete. Review the import before saving.");
+        }
+
+        const collectionIds = args.collectionIds ?? [];
+
+        if (collectionIds.length > 0) {
+            const collections = await Promise.all(
+                collectionIds.map((id) => ctx.db.get(id)),
             );
+
+            const invalidCollection = collections.some(
+                (collection) => !collection || collection.userId !== user._id,
+            );
+
+            if (invalidCollection) {
+                throw new Error("Invalid collection");
+            }
         }
 
         const now = Date.now();
@@ -147,25 +176,23 @@ export const createFromImport = mutation({
             ingredients,
             steps,
             ...(args.servings ? { servings: args.servings } : {}),
-            ...(args.prepTimeMinutes
-                ? { prepTimeMinutes: args.prepTimeMinutes }
-                : {}),
-            ...(args.cookTimeMinutes
-                ? { cookTimeMinutes: args.cookTimeMinutes }
+            ...(args.prepTimeMinutes ? { prepTimeMinutes: args.prepTimeMinutes } : {}),
+            ...(args.cookTimeMinutes ? { cookTimeMinutes: args.cookTimeMinutes } : {}),
+            ...(args.prepTimeMinutes || args.cookTimeMinutes
+                ? {
+                    totalTimeMinutes:
+                        (args.prepTimeMinutes ?? 0) + (args.cookTimeMinutes ?? 0),
+                }
                 : {}),
             ...(args.tags ? { tags: args.tags } : {}),
             ...(args.language ? { language: args.language } : {}),
             ...(args.cuisine ? { cuisine: args.cuisine } : {}),
-            ...(args.ambiguityNotes
-                ? { ambiguityNotes: args.ambiguityNotes }
-                : {}),
+            ...(args.ambiguityNotes ? { ambiguityNotes: args.ambiguityNotes } : {}),
             ...(args.needsUserReview !== undefined
                 ? { needsUserReview: args.needsUserReview }
                 : {}),
-            ...(args.importConfidence
-                ? { importConfidence: args.importConfidence }
-                : {}),
-            collectionIds: [],
+            ...(args.importConfidence ? { importConfidence: args.importConfidence } : {}),
+            collectionIds,
             isFavorite: false,
             syncSource: "account",
             createdAt: now,
@@ -179,6 +206,150 @@ export const createFromImport = mutation({
         });
 
         return recipeId;
+    },
+});
+
+export const toggleFavorite = mutation({
+    args: {
+        token: v.string(),
+        recipeId: v.id("recipes"),
+    },
+    handler: async (ctx, args) => {
+        const user = await getUserFromToken(ctx, args.token);
+
+        if (!user) {
+            throw new Error("Not authenticated");
+        }
+
+        const recipe = await ctx.db.get(args.recipeId);
+
+        if (!recipe || recipe.userId !== user._id) {
+            throw new Error("Recipe not found");
+        }
+
+        await ctx.db.patch(args.recipeId, {
+            isFavorite: !recipe.isFavorite,
+            updatedAt: Date.now(),
+        });
+
+        return !recipe.isFavorite;
+    },
+});
+
+export const remove = mutation({
+    args: {
+        token: v.string(),
+        recipeId: v.id("recipes"),
+    },
+    handler: async (ctx, args) => {
+        const user = await getUserFromToken(ctx, args.token);
+
+        if (!user) {
+            throw new Error("Not authenticated");
+        }
+
+        const recipe = await ctx.db.get(args.recipeId);
+
+        if (!recipe || recipe.userId !== user._id) {
+            throw new Error("Recipe not found");
+        }
+
+        const mealItems = await ctx.db
+            .query("mealPlanItems")
+            .withIndex("by_user_recipe", (q) =>
+                q.eq("userId", user._id).eq("recipeId", args.recipeId),
+            )
+            .collect();
+
+        const groceryItems = await ctx.db
+            .query("groceryItems")
+            .withIndex("by_user", (q) => q.eq("userId", user._id))
+            .collect();
+
+        await Promise.all([
+            ...mealItems.map((item) => ctx.db.delete(item._id)),
+            ...groceryItems
+                .filter((item) => item.recipeId === args.recipeId)
+                .map((item) => ctx.db.delete(item._id)),
+        ]);
+
+        await ctx.db.delete(args.recipeId);
+    },
+});
+
+export const updateBasics = mutation({
+    args: {
+        token: v.string(),
+        recipeId: v.id("recipes"),
+        title: v.optional(v.string()),
+        description: v.optional(v.string()),
+        notes: v.optional(v.string()),
+        servings: v.optional(v.number()),
+        prepTimeMinutes: v.optional(v.number()),
+        cookTimeMinutes: v.optional(v.number()),
+        tags: v.optional(v.array(v.string())),
+    },
+    handler: async (ctx, args) => {
+        const user = await getUserFromToken(ctx, args.token);
+
+        if (!user) {
+            throw new Error("Not authenticated");
+        }
+
+        const recipe = await ctx.db.get(args.recipeId);
+
+        if (!recipe || recipe.userId !== user._id) {
+            throw new Error("Recipe not found");
+        }
+
+        const patch: Record<string, unknown> = {
+            updatedAt: Date.now(),
+        };
+
+        if (args.title !== undefined) {
+            const title = args.title.trim();
+
+            if (!title || isPlaceholderRecipeTitle(title)) {
+                throw new Error("Recipe title is required");
+            }
+
+            patch.title = title;
+        }
+
+        if (args.description !== undefined) {
+            patch.description = args.description.trim();
+        }
+
+        if (args.notes !== undefined) {
+            patch.notes = args.notes.trim();
+        }
+
+        if (args.servings !== undefined) {
+            patch.servings = args.servings;
+        }
+
+        if (args.prepTimeMinutes !== undefined) {
+            patch.prepTimeMinutes = args.prepTimeMinutes;
+        }
+
+        if (args.cookTimeMinutes !== undefined) {
+            patch.cookTimeMinutes = args.cookTimeMinutes;
+        }
+
+        if (
+            args.prepTimeMinutes !== undefined ||
+            args.cookTimeMinutes !== undefined
+        ) {
+            patch.totalTimeMinutes =
+                (args.prepTimeMinutes ?? recipe.prepTimeMinutes ?? 0) +
+                (args.cookTimeMinutes ?? recipe.cookTimeMinutes ?? 0);
+        }
+
+        if (args.tags !== undefined) {
+            patch.tags = args.tags;
+        }
+
+        await ctx.db.patch(args.recipeId, patch);
     },
 });
 
@@ -199,4 +370,3 @@ function isPlaceholderRecipeTitle(title: string) {
         normalized.startsWith("recete nga ")
     );
 }
-
