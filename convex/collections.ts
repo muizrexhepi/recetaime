@@ -6,6 +6,7 @@ import {
     type MutationCtx,
     type QueryCtx,
 } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 
 const COLLECTION_COLORS = [
     "#EF4A38",
@@ -25,6 +26,23 @@ async function getUserFromToken(ctx: QueryCtx | MutationCtx, token: string) {
     if (!session) return null;
 
     return await ctx.db.get(session.userId);
+}
+
+async function imageFieldsForRecipe(ctx: QueryCtx, recipe: {
+    imageUrl?: string;
+    imageStorageId?: Id<"_storage">;
+    imageThumbnailUrl?: string;
+    thumbnailStorageId?: Id<"_storage">;
+}) {
+    const [imageUrl, imageThumbnailUrl] = await Promise.all([
+        recipe.imageStorageId ? ctx.storage.getUrl(recipe.imageStorageId) : Promise.resolve(null),
+        recipe.thumbnailStorageId ? ctx.storage.getUrl(recipe.thumbnailStorageId) : Promise.resolve(null),
+    ]);
+
+    return {
+        imageUrl: imageUrl ?? recipe.imageUrl,
+        imageThumbnailUrl: imageThumbnailUrl ?? recipe.imageThumbnailUrl,
+    };
 }
 
 export const listMineWithCounts = query({
@@ -52,9 +70,16 @@ export const listMineWithCounts = query({
             (recipe) => !recipe.collectionIds || recipe.collectionIds.length === 0,
         );
 
-        const collectionCards = collections.map((collection, index) => {
+        const collectionCards = await Promise.all(collections.map(async (collection, index) => {
             const collectionRecipes = recipes.filter((recipe) =>
                 recipe.collectionIds?.some((id) => id === collection._id),
+            );
+            const recentRecipes = await Promise.all(
+                collectionRecipes.slice(0, 3).map(async (recipe) => ({
+                    _id: recipe._id,
+                    title: recipe.title,
+                    ...(await imageFieldsForRecipe(ctx, recipe)),
+                })),
             );
 
             return {
@@ -66,15 +91,19 @@ export const listMineWithCounts = query({
                     COLLECTION_COLORS[index % COLLECTION_COLORS.length],
                 icon: collection.icon,
                 count: collectionRecipes.length,
-                recentRecipes: collectionRecipes.slice(0, 3).map((recipe) => ({
-                    _id: recipe._id,
-                    title: recipe.title,
-                    imageUrl: recipe.imageUrl,
-                })),
+                recentRecipes,
                 createdAt: collection.createdAt,
                 updatedAt: collection.updatedAt,
             };
-        });
+        }));
+
+        const recentUncategorizedRecipes = await Promise.all(
+            uncategorizedRecipes.slice(0, 3).map(async (recipe) => ({
+                _id: recipe._id,
+                title: recipe.title,
+                ...(await imageFieldsForRecipe(ctx, recipe)),
+            })),
+        );
 
         return [
             {
@@ -84,11 +113,7 @@ export const listMineWithCounts = query({
                 color: "#8B6FE8",
                 icon: "folder",
                 count: uncategorizedRecipes.length,
-                recentRecipes: uncategorizedRecipes.slice(0, 3).map((recipe) => ({
-                    _id: recipe._id,
-                    title: recipe.title,
-                    imageUrl: recipe.imageUrl,
-                })),
+                recentRecipes: recentUncategorizedRecipes,
                 createdAt: 0,
                 updatedAt: Date.now(),
             },

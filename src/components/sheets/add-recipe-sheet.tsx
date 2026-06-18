@@ -69,7 +69,10 @@ export const AddRecipeSheet = forwardRef<AddRecipeSheetRef>(
         sheetRef.current?.dismiss();
 
         setTimeout(() => {
-          router.push(`/import-recipe?mode=${mode}` as any);
+          if (mode === "social") router.push("/import/social-media" as any);
+          else if (mode === "photo") router.push("/import/image" as any);
+          else if (mode === "text") router.push("/import/text" as any);
+          else router.push(`/import-recipe?mode=${mode}` as any);
         }, 120);
       },
       [router],

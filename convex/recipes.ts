@@ -9,8 +9,19 @@ const importSource = v.union(
     v.literal("youtube"),
     v.literal("whatsapp"),
     v.literal("photo"),
+    v.literal("text"),
     v.literal("manual"),
     v.literal("web"),
+    v.literal("unknown"),
+);
+
+const sourcePlatform = v.union(
+    v.literal("tiktok"),
+    v.literal("instagram"),
+    v.literal("manual"),
+    v.literal("photo"),
+    v.literal("text"),
+    v.literal("unknown"),
 );
 
 const confidence = v.union(
@@ -49,6 +60,20 @@ async function getUserFromToken(ctx: QueryCtx | MutationCtx, token: string) {
     return await ctx.db.get(session.userId);
 }
 
+async function withResolvedImageUrl(ctx: QueryCtx | MutationCtx, recipe: any) {
+    if (!recipe.imageStorageId && !recipe.thumbnailStorageId) return recipe;
+
+    const [imageUrl, imageThumbnailUrl] = await Promise.all([
+        recipe.imageStorageId ? ctx.storage.getUrl(recipe.imageStorageId) : null,
+        recipe.thumbnailStorageId ? ctx.storage.getUrl(recipe.thumbnailStorageId) : null,
+    ]);
+    return {
+        ...recipe,
+        ...(imageUrl ? { imageUrl } : {}),
+        ...(imageThumbnailUrl ? { imageThumbnailUrl } : {}),
+    };
+}
+
 export const listMine = query({
     args: {
         token: v.string(),
@@ -58,11 +83,15 @@ export const listMine = query({
 
         if (!user) return [];
 
-        return await ctx.db
+        const recipes = await ctx.db
             .query("recipes")
             .withIndex("by_user_created_at", (q) => q.eq("userId", user._id))
             .order("desc")
             .take(100);
+
+        return await Promise.all(
+            recipes.map((recipe) => withResolvedImageUrl(ctx, recipe)),
+        );
     },
 });
 
@@ -86,8 +115,10 @@ export const getMineById = query({
             ? await Promise.all(recipe.collectionIds.map((id) => ctx.db.get(id)))
             : [];
 
+        const recipeWithImage = await withResolvedImageUrl(ctx, recipe);
+
         return {
-            ...recipe,
+            ...recipeWithImage,
             collections: collections
                 .filter((collection) => collection && collection.userId === user._id)
                 .map((collection) => ({
@@ -106,11 +137,19 @@ export const createFromImport = mutation({
         title: v.string(),
         description: v.optional(v.string()),
         sourceType: importSource,
+        sourcePlatform: v.optional(sourcePlatform),
         sourceUrl: v.optional(v.string()),
         sourceText: v.optional(v.string()),
+        sourceTitle: v.optional(v.string()),
+        sourceAuthor: v.optional(v.string()),
+        sourceThumbnailUrl: v.optional(v.string()),
         imageUrl: v.optional(v.string()),
+        imageStorageId: v.optional(v.id("_storage")),
+        thumbnailStorageId: v.optional(v.id("_storage")),
+        imageThumbnailUrl: v.optional(v.string()),
         ingredients: v.array(ingredient),
         steps: v.array(v.string()),
+        tips: v.optional(v.array(v.string())),
         servings: v.optional(v.number()),
         prepTimeMinutes: v.optional(v.number()),
         cookTimeMinutes: v.optional(v.number()),
@@ -118,6 +157,8 @@ export const createFromImport = mutation({
         language: v.optional(language),
         cuisine: v.optional(v.string()),
         ambiguityNotes: v.optional(v.array(v.string())),
+        extractionConfidence: v.optional(confidence),
+        extractionWarnings: v.optional(v.array(v.string())),
         needsUserReview: v.optional(v.boolean()),
         importConfidence: v.optional(confidence),
         collectionIds: v.optional(v.array(v.id("collections"))),
@@ -170,11 +211,19 @@ export const createFromImport = mutation({
             title,
             ...(args.description ? { description: args.description } : {}),
             sourceType: args.sourceType,
+            sourcePlatform: args.sourcePlatform ?? platformFromSource(args.sourceType),
             ...(args.sourceUrl ? { sourceUrl: args.sourceUrl } : {}),
             ...(args.sourceText ? { sourceText: args.sourceText } : {}),
+            ...(args.sourceTitle ? { sourceTitle: args.sourceTitle } : {}),
+            ...(args.sourceAuthor ? { sourceAuthor: args.sourceAuthor } : {}),
+            ...(args.sourceThumbnailUrl ? { sourceThumbnailUrl: args.sourceThumbnailUrl } : {}),
             ...(args.imageUrl ? { imageUrl: args.imageUrl } : {}),
+            ...(args.imageStorageId ? { imageStorageId: args.imageStorageId } : {}),
+            ...(args.thumbnailStorageId ? { thumbnailStorageId: args.thumbnailStorageId } : {}),
+            ...(args.imageThumbnailUrl ? { imageThumbnailUrl: args.imageThumbnailUrl } : {}),
             ingredients,
             steps,
+            ...(args.tips ? { tips: args.tips.map((tip) => tip.trim()).filter(Boolean) } : {}),
             ...(args.servings ? { servings: args.servings } : {}),
             ...(args.prepTimeMinutes ? { prepTimeMinutes: args.prepTimeMinutes } : {}),
             ...(args.cookTimeMinutes ? { cookTimeMinutes: args.cookTimeMinutes } : {}),
@@ -188,6 +237,8 @@ export const createFromImport = mutation({
             ...(args.language ? { language: args.language } : {}),
             ...(args.cuisine ? { cuisine: args.cuisine } : {}),
             ...(args.ambiguityNotes ? { ambiguityNotes: args.ambiguityNotes } : {}),
+            ...(args.extractionConfidence ? { extractionConfidence: args.extractionConfidence } : {}),
+            ...(args.extractionWarnings ? { extractionWarnings: args.extractionWarnings } : {}),
             ...(args.needsUserReview !== undefined
                 ? { needsUserReview: args.needsUserReview }
                 : {}),
@@ -199,15 +250,62 @@ export const createFromImport = mutation({
             updatedAt: now,
         });
 
-        await ctx.db.insert("importUsage", {
-            userId: user._id,
-            sourceType: args.sourceType,
-            createdAt: now,
-        });
-
         return recipeId;
     },
 });
+
+export const generateImageUploadUrl = mutation({
+    args: {},
+    handler: async (ctx) => {
+        return await ctx.storage.generateUploadUrl();
+    },
+});
+
+export const updateImage = mutation({
+    args: {
+        token: v.string(),
+        recipeId: v.id("recipes"),
+        imageStorageId: v.optional(v.id("_storage")),
+        thumbnailStorageId: v.optional(v.id("_storage")),
+        imageUrl: v.optional(v.string()),
+        imageThumbnailUrl: v.optional(v.string()),
+    },
+    handler: async (ctx, args) => {
+        const user = await getUserFromToken(ctx, args.token);
+
+        if (!user) {
+            throw new Error("Not authenticated");
+        }
+
+        const recipe = await ctx.db.get(args.recipeId);
+
+        if (!recipe || recipe.userId !== user._id) {
+            throw new Error("Recipe not found");
+        }
+
+        await ctx.db.patch(args.recipeId, {
+            ...(args.imageStorageId ? { imageStorageId: args.imageStorageId } : {}),
+            ...(args.thumbnailStorageId ? { thumbnailStorageId: args.thumbnailStorageId } : {}),
+            ...(args.imageUrl ? { imageUrl: args.imageUrl } : {}),
+            ...(args.imageThumbnailUrl ? { imageThumbnailUrl: args.imageThumbnailUrl } : {}),
+            updatedAt: Date.now(),
+        });
+    },
+});
+
+function platformFromSource(sourceType: string) {
+    if (
+        sourceType === "tiktok" ||
+        sourceType === "instagram" ||
+        sourceType === "manual" ||
+        sourceType === "photo" ||
+        sourceType === "text"
+    ) {
+        return sourceType;
+    }
+
+    return "unknown";
+}
 
 export const toggleFavorite = mutation({
     args: {

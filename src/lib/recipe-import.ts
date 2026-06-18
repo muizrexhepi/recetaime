@@ -34,7 +34,7 @@ export function detectSourceType(input?: string): ImportSourceType {
   if (normalized.startsWith("file:")) return "photo";
   if (normalized.startsWith("http")) return "web";
 
-  return "manual";
+  return "text";
 }
 
 export function normalizeRouteMode(mode?: string): ImportMode {
@@ -147,12 +147,20 @@ export function buildRecipeFromParsed(args: {
     sourceType: draft.sourceType,
     ...(draft.sourceUrl ? { sourceUrl: draft.sourceUrl } : {}),
     ...(draft.sourceText ? { sourceText: draft.sourceText } : {}),
-    ...(draft.imageUri ? { imageUrl: draft.imageUri } : {}),
+    ...(draft.imageUrl ? { imageUrl: draft.imageUrl } : {}),
+    ...(draft.imageThumbnailUrl ? { imageThumbnailUrl: draft.imageThumbnailUrl } : {}),
+    ...(draft.imageStorageId ? { imageStorageId: draft.imageStorageId } : {}),
+    ...(draft.thumbnailStorageId ? { thumbnailStorageId: draft.thumbnailStorageId } : {}),
+    ...(draft.sourcePlatform ? { sourcePlatform: draft.sourcePlatform } : {}),
+    ...(draft.sourceTitle ? { sourceTitle: draft.sourceTitle } : {}),
+    ...(draft.sourceAuthor ? { sourceAuthor: draft.sourceAuthor } : {}),
+    ...(draft.sourceThumbnailUrl ? { sourceThumbnailUrl: draft.sourceThumbnailUrl } : {}),
     ingredients: parsedRecipe.ingredients.map((ingredient) => ({
       ...ingredient,
       text: ingredient.text.trim(),
     })),
     steps: parsedRecipe.steps.map((step) => step.trim()).filter(Boolean),
+    ...(parsedRecipe.tips ? { tips: parsedRecipe.tips } : {}),
     ...(parsedRecipe.servings ? { servings: parsedRecipe.servings } : {}),
     ...(parsedRecipe.prepTimeMinutes
       ? { prepTimeMinutes: parsedRecipe.prepTimeMinutes }
@@ -161,6 +169,12 @@ export function buildRecipeFromParsed(args: {
       ? { cookTimeMinutes: parsedRecipe.cookTimeMinutes }
       : {}),
     collectionIds: [],
+    extractionConfidence: parsedRecipe.confidence,
+    extractionWarnings: [
+      ...(parsedRecipe.warnings ?? []),
+      ...(parsedRecipe.missingInfo ?? []),
+      ...(parsedRecipe.ambiguityNotes ?? []),
+    ],
     isFavorite: false,
   };
 }

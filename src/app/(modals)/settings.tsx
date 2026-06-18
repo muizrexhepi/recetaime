@@ -1,6 +1,6 @@
 import {
   IconBell,
-  IconChevronLeft,
+  IconChevronRight,
   IconCrown,
   IconHelp,
   IconLanguage,
@@ -11,7 +11,8 @@ import {
   IconUserPlus,
 } from "@tabler/icons-react-native";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
+import { Stack, useRouter } from "expo-router";
+import { useState } from "react";
 import {
   Alert,
   Linking,
@@ -22,11 +23,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { SettingsRow } from "@/components/settings/settings-row";
-import { ThemedButton } from "@/components/ui/themed-button";
 import { ThemedText } from "@/components/ui/themed-text";
-import { ThemedView } from "@/components/ui/themed-view";
-import { Radius, Spacing } from "@/constants/theme";
+import { colors, Fonts, Radius, Shadows, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/providers/auth-provider";
 import { useGuestStore } from "@/stores/guest-store";
@@ -48,29 +46,29 @@ export default function SettingsScreen() {
   const resetGuest = useGuestStore((state) => state.resetGuest);
   const resetFlow = useOnboardingFlowStore((state) => state.resetFlow);
 
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
   const t = theme as any;
-  const borderLight = t.borderLight ?? theme.border;
   const surface = t.surface ?? "#F7F6F2";
+  const paper = t.paper ?? "#FFFFFF";
+  const borderLight = t.borderLight ?? "rgba(39,31,23,0.08)";
   const textSecondary = t.textSecondary ?? "#756F66";
+  const textTertiary = t.textTertiary ?? "#9B938A";
+  const primarySoft = t.primarySoft ?? "#FFF0ED";
   const gold = t.gold ?? "#D89A22";
 
-  const close = () => {
-    Haptics.selectionAsync();
-    router.back();
-  };
-
   const handleCreateAccount = () => {
-    Haptics.selectionAsync();
+    void Haptics.selectionAsync();
     router.push("/onboarding/create-account" as any);
   };
 
   const handleSubscription = () => {
-    Haptics.selectionAsync();
+    void Haptics.selectionAsync();
     router.push("/paywall" as any);
   };
 
   const handleRestorePurchases = async () => {
-    Haptics.selectionAsync();
+    void Haptics.selectionAsync();
 
     if (typeof auth?.restorePurchases === "function") {
       await auth.restorePurchases();
@@ -85,7 +83,7 @@ export default function SettingsScreen() {
   };
 
   const handleLanguage = () => {
-    Haptics.selectionAsync();
+    void Haptics.selectionAsync();
 
     Alert.alert("Gjuha", "Aktualisht aplikacioni është në shqip.", [
       { text: "Në rregull" },
@@ -93,7 +91,7 @@ export default function SettingsScreen() {
   };
 
   const handleNotifications = () => {
-    Haptics.selectionAsync();
+    void Haptics.selectionAsync();
 
     Alert.alert(
       "Kujtesat",
@@ -102,52 +100,78 @@ export default function SettingsScreen() {
         { text: "Anulo", style: "cancel" },
         {
           text: "Hap cilësimet",
-          onPress: () => Linking.openSettings(),
+          onPress: () => void Linking.openSettings(),
         },
       ],
     );
   };
 
   const handleSupport = () => {
-    Haptics.selectionAsync();
+    void Haptics.selectionAsync();
 
     const subject = encodeURIComponent("Ndihmë me Receta Ime");
     const body = encodeURIComponent(
       "Përshëndetje,\n\nKam nevojë për ndihmë me Receta Ime.\n\n",
     );
 
-    Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`);
+    void Linking.openURL(
+      `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`,
+    );
   };
 
   const openUrl = (url: string) => {
-    Haptics.selectionAsync();
-    Linking.openURL(url);
+    void Haptics.selectionAsync();
+    void Linking.openURL(url);
+  };
+
+  const performLogout = async () => {
+    if (isLoggingOut) return;
+
+    setIsLoggingOut(true);
+
+    try {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      if (typeof auth?.signOut === "function") {
+        await auth.signOut();
+      } else if (typeof auth?.logout === "function") {
+        await auth.logout();
+      }
+
+      /*
+        Important:
+        Your root guard redirects completed guests back into tabs.
+        So after logout, clear the guest/onboarding state too.
+      */
+      resetFlow();
+      resetGuest();
+
+      router.replace("/onboarding" as any);
+    } catch {
+      Alert.alert("Nuk dole dot nga llogaria", "Provo përsëri pas pak.");
+
+      setIsLoggingOut(false);
+    }
   };
 
   const handleLogout = () => {
-    Alert.alert("Dil nga llogaria?", "Do të dalësh nga kjo pajisje.", [
+    void Haptics.selectionAsync();
+
+    Alert.alert("Dil nga llogaria?", "Do të kthehesh te ekrani fillestar.", [
       { text: "Anulo", style: "cancel" },
       {
         text: "Dil",
         style: "destructive",
-        onPress: async () => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-          if (typeof auth?.signOut === "function") {
-            await auth.signOut();
-          } else if (typeof auth?.logout === "function") {
-            await auth.logout();
-          } else {
-            resetGuest();
-          }
-
-          router.replace("/onboarding" as any);
+        onPress: () => {
+          void performLogout();
         },
       },
     ]);
   };
 
   const handleDeleteAccount = () => {
+    void Haptics.selectionAsync();
+
     Alert.alert(
       "Fshi llogarinë?",
       "Kjo do të fshijë llogarinë dhe të dhënat e lidhura me të. Ky veprim nuk mund të zhbëhet.",
@@ -157,12 +181,12 @@ export default function SettingsScreen() {
           text: "Fshi",
           style: "destructive",
           onPress: async () => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
             if (typeof auth?.deleteAccount === "function") {
               await auth.deleteAccount();
-              resetGuest();
               resetFlow();
+              resetGuest();
               router.replace("/onboarding" as any);
               return;
             }
@@ -178,191 +202,341 @@ export default function SettingsScreen() {
   };
 
   return (
-    <SafeAreaView
-      edges={["top"]}
-      style={[styles.safeArea, { backgroundColor: theme.background }]}
-    >
-      <ThemedView transparent style={styles.header}>
-        <Pressable
-          onPress={close}
-          hitSlop={12}
-          style={({ pressed }) => [
-            styles.backButton,
-            {
-              backgroundColor: surface,
-              opacity: pressed ? 0.72 : 1,
-            },
-          ]}
-        >
-          <IconChevronLeft
-            size={28}
-            color={theme.textPrimary}
-            strokeWidth={2.7}
-          />
-        </Pressable>
+    <>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          title: "Cilësimet",
+          headerBackTitle: "Mbrapa",
+          headerLargeTitle: false,
+          headerShadowVisible: false,
+          headerTransparent: true,
+          headerBlurEffect: undefined,
+          headerTintColor: colors.textPrimary,
+          headerStyle: {
+            backgroundColor: "transparent",
+          },
+          headerTitleStyle: {
+            fontFamily: Fonts.bold,
+            fontSize: 17,
+          },
+          contentStyle: {
+            backgroundColor: theme.background,
+          },
+        }}
+      />
 
-        <ThemedText type="title" style={styles.headerTitle}>
-          Cilësimet
-        </ThemedText>
-
-        <View style={styles.headerSpacer} />
-      </ThemedView>
-
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.content}
+      <SafeAreaView
+        edges={["bottom"]}
+        style={[styles.safeArea, { backgroundColor: theme.background }]}
       >
-        <SectionTitle title="Llogaria" />
-
-        <View style={[styles.group, { borderTopColor: borderLight }]}>
-          {!hasAccount ? (
-            <SettingsRow
-              icon={
-                <IconUserPlus
-                  size={21}
-                  color={theme.primary}
-                  strokeWidth={2.2}
-                />
-              }
-              title="Krijo llogari"
-              subtitle="Ruaji recetat që të mos humbin."
-              onPress={handleCreateAccount}
-            />
-          ) : (
-            <SettingsRow
-              icon={
-                <IconShieldLock
-                  size={21}
-                  color={textSecondary}
-                  strokeWidth={2.2}
-                />
-              }
-              title="Llogaria ime"
-              value="Aktive"
-              showChevron={false}
-            />
-          )}
-
-          <SettingsRow
-            icon={<IconCrown size={21} color={gold} strokeWidth={2.2} />}
-            title="Abonimi im"
-            onPress={handleSubscription}
-          />
-
-          <SettingsRow
-            icon={
-              <IconRotateClockwise
-                size={21}
-                color={textSecondary}
-                strokeWidth={2.2}
-              />
-            }
-            title="Rikthe blerjet"
-            onPress={handleRestorePurchases}
-          />
-        </View>
-
-        <SectionTitle title="Preferencat" />
-
-        <View style={[styles.group, { borderTopColor: borderLight }]}>
-          <SettingsRow
-            icon={
-              <IconLanguage size={21} color={textSecondary} strokeWidth={2.2} />
-            }
-            title="Gjuha"
-            value="Shqip"
-            onPress={handleLanguage}
-          />
-
-          <SettingsRow
-            icon={
-              <IconBell size={21} color={textSecondary} strokeWidth={2.2} />
-            }
-            title="Kujtesat"
-            value="Joaktive"
-            onPress={handleNotifications}
-          />
-        </View>
-
-        <SectionTitle title="Ndihmë" />
-
-        <View style={[styles.group, { borderTopColor: borderLight }]}>
-          <SettingsRow
-            icon={
-              <IconHelp size={21} color={textSecondary} strokeWidth={2.2} />
-            }
-            title="Ndihmë & feedback"
-            onPress={handleSupport}
-          />
-
-          <SettingsRow
-            icon={
-              <IconMail size={21} color={textSecondary} strokeWidth={2.2} />
-            }
-            title="Privacy Policy"
-            onPress={() => openUrl(PRIVACY_URL)}
-          />
-
-          <SettingsRow
-            icon={
-              <IconShieldLock
-                size={21}
-                color={textSecondary}
-                strokeWidth={2.2}
-              />
-            }
-            title="Terms of Use"
-            onPress={() => openUrl(TERMS_URL)}
-          />
-        </View>
-
-        <View style={styles.actions}>
-          {hasAccount ? (
-            <>
-              <ThemedButton
-                title="Dil nga llogaria"
-                variant="secondary"
-                onPress={handleLogout}
-                style={styles.actionButton}
-              />
-
-              <Pressable
-                onPress={handleDeleteAccount}
-                hitSlop={12}
-                style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}
-              >
-                <View style={styles.deleteRow}>
-                  <IconTrash size={18} color="#D9422F" strokeWidth={2.3} />
-                  <ThemedText style={styles.deleteText}>
-                    Fshi llogarinë
-                  </ThemedText>
-                </View>
-              </Pressable>
-            </>
-          ) : null}
-        </View>
-
-        <ThemedText
-          type="subhead"
-          themeColor="textTertiary"
-          style={styles.version}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentInsetAdjustmentBehavior="automatic"
+          contentContainerStyle={styles.content}
         >
-          Version 1.0.0
-        </ThemedText>
-      </ScrollView>
-    </SafeAreaView>
+          <View
+            style={[
+              styles.heroCard,
+              {
+                backgroundColor: paper,
+                borderColor: borderLight,
+              },
+            ]}
+          >
+            <View style={[styles.appIcon, { backgroundColor: primarySoft }]}>
+              <IconShieldLock
+                size={27}
+                color={theme.primary}
+                strokeWidth={2.4}
+              />
+            </View>
+
+            <View style={styles.heroCopy}>
+              <ThemedText style={styles.heroTitle}>Receta Ime</ThemedText>
+
+              <ThemedText
+                style={[styles.heroSubtitle, { color: textSecondary }]}
+              >
+                Ruaji recetat, koleksionet dhe preferencat e tua.
+              </ThemedText>
+            </View>
+          </View>
+
+          <SettingsSection title="Llogaria">
+            {!hasAccount ? (
+              <SettingsItem
+                icon={
+                  <IconUserPlus size={21} color="#FFFFFF" strokeWidth={2.25} />
+                }
+                iconBackground={theme.primary}
+                title="Krijo llogari"
+                subtitle="Ruaji recetat që të mos humbin."
+                onPress={handleCreateAccount}
+                paper={paper}
+                borderLight={borderLight}
+              />
+            ) : (
+              <SettingsItem
+                icon={
+                  <IconShieldLock
+                    size={21}
+                    color="#FFFFFF"
+                    strokeWidth={2.25}
+                  />
+                }
+                iconBackground={theme.primary}
+                title="Llogaria ime"
+                value="Aktive"
+                showChevron={false}
+                paper={paper}
+                borderLight={borderLight}
+              />
+            )}
+
+            <SettingsItem
+              icon={<IconCrown size={21} color="#FFFFFF" strokeWidth={2.25} />}
+              iconBackground={gold}
+              title="Abonimi im"
+              subtitle="Menaxho planin dhe përfitimet."
+              onPress={handleSubscription}
+              paper={paper}
+              borderLight={borderLight}
+            />
+
+            <SettingsItem
+              icon={
+                <IconRotateClockwise
+                  size={21}
+                  color="#FFFFFF"
+                  strokeWidth={2.25}
+                />
+              }
+              iconBackground="#8E8E93"
+              title="Rikthe blerjet"
+              subtitle="Rikthe abonimin nga App Store."
+              onPress={handleRestorePurchases}
+              paper={paper}
+              borderLight={borderLight}
+              last
+            />
+          </SettingsSection>
+
+          <SettingsSection title="Preferencat">
+            <SettingsItem
+              icon={
+                <IconLanguage size={21} color="#FFFFFF" strokeWidth={2.25} />
+              }
+              iconBackground="#4F8FEA"
+              title="Gjuha"
+              value="Shqip"
+              onPress={handleLanguage}
+              paper={paper}
+              borderLight={borderLight}
+            />
+
+            <SettingsItem
+              icon={<IconBell size={21} color="#FFFFFF" strokeWidth={2.25} />}
+              iconBackground="#EF4A38"
+              title="Kujtesat"
+              value="Joaktive"
+              onPress={handleNotifications}
+              paper={paper}
+              borderLight={borderLight}
+              last
+            />
+          </SettingsSection>
+
+          <SettingsSection title="Ndihmë">
+            <SettingsItem
+              icon={<IconHelp size={21} color="#FFFFFF" strokeWidth={2.25} />}
+              iconBackground="#8B6FE8"
+              title="Ndihmë & feedback"
+              subtitle="Na shkruaj për problem ose ide."
+              onPress={handleSupport}
+              paper={paper}
+              borderLight={borderLight}
+            />
+
+            <SettingsItem
+              icon={<IconMail size={21} color="#FFFFFF" strokeWidth={2.25} />}
+              iconBackground="#34A853"
+              title="Privacy Policy"
+              onPress={() => openUrl(PRIVACY_URL)}
+              paper={paper}
+              borderLight={borderLight}
+            />
+
+            <SettingsItem
+              icon={
+                <IconShieldLock size={21} color="#FFFFFF" strokeWidth={2.25} />
+              }
+              iconBackground="#5E5CE6"
+              title="Terms of Use"
+              onPress={() => openUrl(TERMS_URL)}
+              paper={paper}
+              borderLight={borderLight}
+              last
+            />
+          </SettingsSection>
+
+          {hasAccount ? (
+            <SettingsSection title="Llogaria">
+              <SettingsItem
+                icon={
+                  <IconShieldLock
+                    size={21}
+                    color="#FFFFFF"
+                    strokeWidth={2.25}
+                  />
+                }
+                iconBackground="#D9422F"
+                title={isLoggingOut ? "Duke dalë..." : "Dil nga llogaria"}
+                titleColor="#D9422F"
+                onPress={handleLogout}
+                disabled={isLoggingOut}
+                paper={paper}
+                borderLight={borderLight}
+              />
+
+              <SettingsItem
+                icon={
+                  <IconTrash size={21} color="#FFFFFF" strokeWidth={2.25} />
+                }
+                iconBackground="#D9422F"
+                title="Fshi llogarinë"
+                titleColor="#D9422F"
+                onPress={handleDeleteAccount}
+                disabled={isLoggingOut}
+                paper={paper}
+                borderLight={borderLight}
+                last
+              />
+            </SettingsSection>
+          ) : null}
+
+          <ThemedText style={[styles.version, { color: textTertiary }]}>
+            Version 1.0.0
+          </ThemedText>
+        </ScrollView>
+      </SafeAreaView>
+    </>
   );
 }
 
-function SectionTitle({ title }: { title: string }) {
+function SettingsSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
-    <ThemedText
-      type="subhead"
-      themeColor="textSecondary"
-      style={styles.sectionTitle}
+    <View style={styles.section}>
+      <ThemedText style={styles.sectionTitle}>{title}</ThemedText>
+
+      <View style={styles.sectionCard}>{children}</View>
+    </View>
+  );
+}
+
+function SettingsItem({
+  icon,
+  iconBackground,
+  title,
+  subtitle,
+  value,
+  titleColor,
+  onPress,
+  showChevron = true,
+  paper,
+  borderLight,
+  last,
+  disabled,
+}: {
+  icon: React.ReactNode;
+  iconBackground: string;
+  title: string;
+  subtitle?: string;
+  value?: string;
+  titleColor?: string;
+  onPress?: () => void;
+  showChevron?: boolean;
+  paper: string;
+  borderLight: string;
+  last?: boolean;
+  disabled?: boolean;
+}) {
+  const theme = useTheme();
+  const t = theme as any;
+  const textSecondary = t.textSecondary ?? "#756F66";
+  const textTertiary = t.textTertiary ?? "#9B938A";
+
+  const content = (
+    <>
+      <View style={[styles.rowIcon, { backgroundColor: iconBackground }]}>
+        {icon}
+      </View>
+
+      <View style={styles.rowCopy}>
+        <ThemedText
+          style={[styles.rowTitle, titleColor ? { color: titleColor } : null]}
+        >
+          {title}
+        </ThemedText>
+
+        {subtitle ? (
+          <ThemedText style={[styles.rowSubtitle, { color: textSecondary }]}>
+            {subtitle}
+          </ThemedText>
+        ) : null}
+      </View>
+
+      {value ? (
+        <ThemedText style={[styles.rowValue, { color: textSecondary }]}>
+          {value}
+        </ThemedText>
+      ) : null}
+
+      {showChevron && onPress ? (
+        <IconChevronRight size={19} color={textTertiary} strokeWidth={2.35} />
+      ) : null}
+    </>
+  );
+
+  if (!onPress) {
+    return (
+      <View
+        style={[
+          styles.row,
+          {
+            backgroundColor: paper,
+            borderBottomColor: last ? "transparent" : borderLight,
+          },
+        ]}
+      >
+        {content}
+      </View>
+    );
+  }
+
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      hitSlop={8}
+      accessibilityRole="button"
+      style={({ pressed }) => [
+        styles.row,
+        {
+          backgroundColor: paper,
+          borderBottomColor: last ? "transparent" : borderLight,
+          opacity: disabled ? 0.45 : pressed ? 0.68 : 1,
+        },
+      ]}
     >
-      {title}
-    </ThemedText>
+      {content}
+    </Pressable>
   );
 }
 
@@ -370,69 +544,102 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
-  header: {
-    height: 68,
+  content: {
     paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.lg,
+    paddingBottom: 130,
+  },
+  heroCard: {
+    minHeight: 96,
+    borderRadius: Radius.xxl,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: Spacing.lg,
     flexDirection: "row",
     alignItems: "center",
+    gap: Spacing.md,
+    ...Shadows.soft,
   },
-  backButton: {
-    width: 48,
-    height: 48,
-    borderRadius: Radius.full,
+  appIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: Radius.xl,
     alignItems: "center",
     justifyContent: "center",
   },
-  headerTitle: {
+  heroCopy: {
     flex: 1,
-    textAlign: "center",
-    fontSize: 23,
-    lineHeight: 29,
+    gap: 3,
   },
-  headerSpacer: {
-    width: 48,
-    height: 48,
+  heroTitle: {
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: "900",
+    letterSpacing: -0.35,
   },
-  content: {
-    paddingTop: Spacing.md,
-    paddingBottom: 120,
+  heroSubtitle: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "700",
+  },
+  section: {
+    marginTop: Spacing.xl,
   },
   sectionTitle: {
-    marginTop: Spacing.xl,
-    marginBottom: Spacing.xs,
-    paddingHorizontal: Spacing.xl,
+    marginBottom: Spacing.sm,
+    paddingHorizontal: 2,
     fontSize: 13,
     lineHeight: 18,
     fontWeight: "900",
     textTransform: "uppercase",
     letterSpacing: 0.7,
+    color: "#756F66",
   },
-  group: {
-    borderTopWidth: StyleSheet.hairlineWidth,
+  sectionCard: {
+    borderRadius: Radius.xxl,
+    overflow: "hidden",
+    ...Shadows.soft,
   },
-  actions: {
-    marginTop: Spacing.xxxl,
-    paddingHorizontal: Spacing.xl,
-    gap: Spacing.lg,
-    alignItems: "center",
-  },
-  actionButton: {
-    width: "100%",
-  },
-  deleteRow: {
+  row: {
+    minHeight: 64,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: Spacing.xs,
+    gap: Spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  deleteText: {
-    color: "#D9422F",
+  rowIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: Radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rowCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  rowTitle: {
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: "900",
+  },
+  rowSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
+  },
+  rowValue: {
     fontSize: 15,
     lineHeight: 20,
-    fontWeight: "800",
+    fontWeight: "700",
   },
   version: {
     marginTop: Spacing.xxl,
     textAlign: "center",
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
   },
 });

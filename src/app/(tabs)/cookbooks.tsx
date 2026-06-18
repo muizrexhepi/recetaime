@@ -1,28 +1,20 @@
-import {
-  BottomSheetBackdrop,
-  BottomSheetModal,
-  BottomSheetScrollView,
-  type BottomSheetBackdropProps,
-} from "@gorhom/bottom-sheet";
+import { Divider, Host, Menu, Button as NativeButton } from "@expo/ui/swift-ui";
+import { buttonStyle } from "@expo/ui/swift-ui/modifiers";
 import {
   IconBoltFilled,
-  IconCheck,
   IconChefHat,
-  IconChevronDown,
-  IconDots,
   IconFolder,
   IconFolders,
-  IconHeart,
   IconPlus,
   IconStarFilled,
 } from "@tabler/icons-react-native";
 import { useMutation, useQuery } from "convex/react";
 import * as Haptics from "expo-haptics";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   Alert,
-  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -65,6 +57,7 @@ type CollectionCardLike = {
     _id?: Id<"recipes"> | string;
     title: string;
     imageUrl?: string;
+    imageThumbnailUrl?: string;
   }[];
 };
 
@@ -76,6 +69,7 @@ type RecipeLike = Partial<GuestRecipe> & {
   description?: string;
   sourceType?: string;
   imageUrl?: string;
+  imageThumbnailUrl?: string;
   collectionIds?: (Id<"collections"> | string)[];
   ingredients?: { text: string }[];
   steps?: string[];
@@ -97,10 +91,10 @@ export default function CookbooksIndexScreen() {
   const theme = useTheme();
 
   const usageSheetRef = useRef<ImportUsageSheetRef>(null);
-  const filterSheetRef = useRef<BottomSheetModal>(null);
 
   const { token, isAuthenticated } = useAuth();
   const guestRecipes = useGuestStore((state) => state.recipes);
+  const guestId = useGuestStore((state) => state.guestId);
 
   const [viewMode, setViewMode] = useState<ViewMode>("recipes");
   const [filter, setFilter] = useState<LibraryFilter>({ type: "all" });
@@ -117,7 +111,7 @@ export default function CookbooksIndexScreen() {
 
   const usage = useQuery(
     api.importUsage.getWeeklyUsage,
-    isAuthenticated && token ? { token } : "skip",
+    isAuthenticated && token ? { token } : { guestId },
   ) as ImportUsageSummary | undefined;
 
   const createCollection = useMutation(api.collections.create);
@@ -128,8 +122,14 @@ export default function CookbooksIndexScreen() {
 
   const collections = useMemo(() => {
     if (isAuthenticated) return accountCollections ?? [];
+
     return buildGuestCollections(recipes);
   }, [accountCollections, isAuthenticated, recipes]);
+
+  const realCollections = useMemo(
+    () => collections.filter((collection) => collection.kind === "collection"),
+    [collections],
+  );
 
   const filteredRecipes = useMemo(() => {
     return recipes
@@ -163,23 +163,9 @@ export default function CookbooksIndexScreen() {
   const activeLabel =
     viewMode === "collections" ? "Koleksionet" : getFilterLabel(filter);
 
-  const activeCount =
-    viewMode === "collections"
-      ? formatCollectionCount(collections.length)
-      : formatRecipeCount(filteredRecipes.length);
-
   const openUsage = () => {
-    Haptics.selectionAsync();
+    void Haptics.selectionAsync();
     usageSheetRef.current?.present();
-  };
-
-  const openFilterSheet = () => {
-    Haptics.selectionAsync();
-    filterSheetRef.current?.present();
-  };
-
-  const closeFilterSheet = () => {
-    filterSheetRef.current?.dismiss();
   };
 
   const openPaywall = () => {
@@ -187,7 +173,7 @@ export default function CookbooksIndexScreen() {
   };
 
   const openImport = () => {
-    Haptics.selectionAsync();
+    void Haptics.selectionAsync();
 
     router.push({
       pathname: "/import-recipe",
@@ -209,7 +195,7 @@ export default function CookbooksIndexScreen() {
   };
 
   const openCollection = (collection: CollectionCardLike) => {
-    Haptics.selectionAsync();
+    void Haptics.selectionAsync();
 
     router.push({
       pathname: "/cookbook/[id]",
@@ -219,25 +205,22 @@ export default function CookbooksIndexScreen() {
     } as any);
   };
 
-  const applyFilter = (
-    nextFilter: LibraryFilter,
-    nextMode: ViewMode = "recipes",
-  ) => {
-    Haptics.selectionAsync();
-    setViewMode(nextMode);
-    setFilter(nextFilter);
-    closeFilterSheet();
-  };
+  const applyFilter = useCallback(
+    (nextFilter: LibraryFilter, nextMode: ViewMode = "recipes") => {
+      void Haptics.selectionAsync();
+      setViewMode(nextMode);
+      setFilter(nextFilter);
+    },
+    [],
+  );
 
-  const showCollections = () => {
-    Haptics.selectionAsync();
+  const showCollections = useCallback(() => {
+    void Haptics.selectionAsync();
     setViewMode("collections");
-    closeFilterSheet();
-  };
+  }, []);
 
-  const handleCreateCollection = () => {
-    Haptics.selectionAsync();
-    closeFilterSheet();
+  const handleCreateCollection = useCallback(() => {
+    void Haptics.selectionAsync();
 
     if (!isAuthenticated || !token) {
       Alert.alert(
@@ -263,7 +246,7 @@ export default function CookbooksIndexScreen() {
           { text: "Anulo", style: "cancel" },
           {
             text: "Krijo",
-            onPress: (value) => {
+            onPress: (value?: string) => {
               const title = value?.trim();
               if (!title) return;
 
@@ -290,7 +273,7 @@ export default function CookbooksIndexScreen() {
       "Koleksion i ri",
       "Për Android do ta lidhim me modal të veçantë më vonë.",
     );
-  };
+  }, [createCollection, isAuthenticated, router, token]);
 
   return (
     <>
@@ -298,69 +281,48 @@ export default function CookbooksIndexScreen() {
         <TabScreenHeader
           title="Recetat"
           right={
-            <View style={styles.headerActions}>
-              <Pressable
-                onPress={openUsage}
-                hitSlop={12}
-                style={({ pressed }) => [
-                  styles.usagePill,
-                  { opacity: pressed ? 0.72 : 1 },
-                ]}
-              >
-                <IconBoltFilled size={17} color={theme.primary} />
+            <Pressable
+              onPress={openUsage}
+              hitSlop={12}
+              style={({ pressed }) => [
+                styles.usagePill,
+                { opacity: pressed ? 0.72 : 1 },
+              ]}
+            >
+              <IconBoltFilled size={17} color={theme.primary} />
 
-                <ThemedText
-                  style={[styles.usageText, { color: theme.primary }]}
-                >
-                  {formatUsageLabel(usage)}
-                </ThemedText>
-              </Pressable>
-
-              <Pressable
-                onPress={openFilterSheet}
-                hitSlop={12}
-                style={({ pressed }) => [
-                  styles.headerIconButton,
-                  { opacity: pressed ? 0.72 : 1 },
-                ]}
-              >
-                <IconDots
-                  size={23}
-                  color={theme.textPrimary}
-                  strokeWidth={2.6}
-                />
-              </Pressable>
-            </View>
+              <ThemedText style={[styles.usageText, { color: theme.primary }]}>
+                {formatUsageLabel(usage)}
+              </ThemedText>
+            </Pressable>
           }
         />
+
+        <View style={styles.filterHeader}>
+          <FilterTitleMenu
+            activeLabel={activeLabel}
+            filter={filter}
+            viewMode={viewMode}
+            realCollections={realCollections}
+            onAll={() => applyFilter({ type: "all" })}
+            onFavorites={() => applyFilter({ type: "favorites" })}
+            onUncategorized={() => applyFilter({ type: "uncategorized" })}
+            onCollections={showCollections}
+            onCollection={(collection) =>
+              applyFilter({
+                type: "collection",
+                id: String(collection.id),
+                label: collection.title,
+              })
+            }
+            onCreateCollection={handleCreateCollection}
+          />
+        </View>
 
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.content}
         >
-          <Pressable
-            onPress={openFilterSheet}
-            hitSlop={10}
-            style={({ pressed }) => [
-              styles.stateBlock,
-              { opacity: pressed ? 0.72 : 1 },
-            ]}
-          >
-            <View style={styles.stateTitleRow}>
-              <ThemedText style={styles.stateTitle} numberOfLines={1}>
-                {activeLabel}
-              </ThemedText>
-
-              <IconChevronDown
-                size={23}
-                color={theme.textPrimary}
-                strokeWidth={2.5}
-              />
-            </View>
-
-            <ThemedText style={styles.stateSubtitle}>{activeCount}</ThemedText>
-          </Pressable>
-
           {isLoading ? (
             <View style={styles.loadingState}>
               <ThemedText type="body" themeColor="textSecondary">
@@ -434,25 +396,6 @@ export default function CookbooksIndexScreen() {
         </ScrollView>
       </TabScreen>
 
-      <LibraryFilterSheet
-        refValue={filterSheetRef}
-        viewMode={viewMode}
-        filter={filter}
-        collections={collections}
-        onAll={() => applyFilter({ type: "all" })}
-        onFavorites={() => applyFilter({ type: "favorites" })}
-        onUncategorized={() => applyFilter({ type: "uncategorized" })}
-        onCollection={(collection) =>
-          applyFilter({
-            type: "collection",
-            id: String(collection.id),
-            label: collection.title,
-          })
-        }
-        onShowCollections={showCollections}
-        onCreateCollection={handleCreateCollection}
-      />
-
       <ImportUsageSheet
         ref={usageSheetRef}
         usage={usage}
@@ -462,230 +405,94 @@ export default function CookbooksIndexScreen() {
   );
 }
 
-function LibraryFilterSheet({
-  refValue,
-  viewMode,
+function FilterTitleMenu({
+  activeLabel,
   filter,
-  collections,
+  viewMode,
+  realCollections,
   onAll,
   onFavorites,
   onUncategorized,
+  onCollections,
   onCollection,
-  onShowCollections,
   onCreateCollection,
 }: {
-  refValue: React.RefObject<BottomSheetModal>;
-  viewMode: ViewMode;
+  activeLabel: string;
   filter: LibraryFilter;
-  collections: CollectionCardLike[];
+  viewMode: ViewMode;
+  realCollections: CollectionCardLike[];
   onAll: () => void;
   onFavorites: () => void;
   onUncategorized: () => void;
+  onCollections: () => void;
   onCollection: (collection: CollectionCardLike) => void;
-  onShowCollections: () => void;
   onCreateCollection: () => void;
 }) {
-  const theme = useTheme();
-  const snapPoints = useMemo(() => ["58%"], []);
-
-  const t = theme as any;
-  const paper = t.paper ?? theme.background;
-  const surface = t.surface ?? "#F7F6F2";
-  const borderLight = t.borderLight ?? theme.border;
-  const textSecondary = t.textSecondary ?? "#756F66";
-
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.42}
-        pressBehavior="close"
-      />
-    ),
-    [],
-  );
-
-  const realCollections = collections.filter(
-    (collection) => collection.kind === "collection",
-  );
+  const isAllSelected = viewMode === "recipes" && filter.type === "all";
+  const isFavoritesSelected =
+    viewMode === "recipes" && filter.type === "favorites";
+  const isUncategorizedSelected =
+    viewMode === "recipes" && filter.type === "uncategorized";
+  const isCollectionsSelected = viewMode === "collections";
 
   return (
-    <BottomSheetModal
-      ref={refValue}
-      index={0}
-      snapPoints={snapPoints}
-      enablePanDownToClose
-      backdropComponent={renderBackdrop}
-      handleIndicatorStyle={{
-        width: 46,
-        height: 5,
-        backgroundColor: borderLight,
-      }}
-      backgroundStyle={{
-        backgroundColor: paper,
-        borderTopLeftRadius: Radius.xxl,
-        borderTopRightRadius: Radius.xxl,
-      }}
-    >
-      <BottomSheetScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.sheetContent}
+    <Host style={styles.filterMenuHost}>
+      <Menu
+        label={activeLabel}
+        systemImage="chevron.down"
+        modifiers={[buttonStyle("plain")]}
       >
-        <View style={styles.sheetHeader}>
-          <ThemedText style={styles.sheetTitle}>Pamja e recetave</ThemedText>
+        <NativeButton
+          label="Të gjitha"
+          systemImage={isAllSelected ? "checkmark" : "fork.knife"}
+          onPress={onAll}
+        />
 
-          <ThemedText style={[styles.sheetSubtitle, { color: textSecondary }]}>
-            Zgjidh si do t’i shfaqësh recetat.
-          </ThemedText>
-        </View>
+        <NativeButton
+          label="Favoritet"
+          systemImage={isFavoritesSelected ? "checkmark" : "heart"}
+          onPress={onFavorites}
+        />
 
-        <View style={[styles.sheetGroup, { backgroundColor: surface }]}>
-          <FilterRow
-            title="Të gjitha recetat"
-            subtitle="Shfaq çdo recetë të ruajtur."
-            icon={<IconChefHat size={21} color={theme.primary} />}
-            selected={viewMode === "recipes" && filter.type === "all"}
-            onPress={onAll}
-          />
+        <NativeButton
+          label="Pa kategori"
+          systemImage={isUncategorizedSelected ? "checkmark" : "folder"}
+          onPress={onUncategorized}
+        />
 
-          <FilterRow
-            title="Favoritet"
-            subtitle="Vetëm recetat me yll."
-            icon={<IconHeart size={21} color={theme.primary} />}
-            selected={viewMode === "recipes" && filter.type === "favorites"}
-            onPress={onFavorites}
-          />
+        <NativeButton
+          label="Koleksionet"
+          systemImage={isCollectionsSelected ? "checkmark" : "square.stack"}
+          onPress={onCollections}
+        />
 
-          <FilterRow
-            title="Pa kategori"
-            subtitle="Receta që nuk janë në koleksion."
-            icon={<IconFolder size={21} color={theme.primary} />}
-            selected={viewMode === "recipes" && filter.type === "uncategorized"}
-            onPress={onUncategorized}
-          />
+        {realCollections.length > 0 ? <Divider /> : null}
 
-          <FilterRow
-            title="Koleksionet"
-            subtitle="Shfaq raftin me koleksione."
-            icon={<IconFolders size={21} color={theme.primary} />}
-            selected={viewMode === "collections"}
-            onPress={onShowCollections}
-            last
-          />
-        </View>
+        {realCollections.map((collection) => {
+          const isSelected =
+            viewMode === "recipes" &&
+            filter.type === "collection" &&
+            String(filter.id) === String(collection.id);
 
-        {realCollections.length > 0 ? (
-          <>
-            <ThemedText style={styles.sheetSectionLabel}>Koleksione</ThemedText>
+          return (
+            <NativeButton
+              key={String(collection.id)}
+              label={collection.title}
+              systemImage={isSelected ? "checkmark" : "folder.fill"}
+              onPress={() => onCollection(collection)}
+            />
+          );
+        })}
 
-            <View style={[styles.sheetGroup, { backgroundColor: surface }]}>
-              {realCollections.map((collection, index) => (
-                <FilterRow
-                  key={String(collection.id)}
-                  title={collection.title}
-                  subtitle={formatRecipeCount(collection.count)}
-                  colorDot={collection.color}
-                  selected={
-                    viewMode === "recipes" &&
-                    filter.type === "collection" &&
-                    String(filter.id) === String(collection.id)
-                  }
-                  onPress={() => onCollection(collection)}
-                  last={index === realCollections.length - 1}
-                />
-              ))}
-            </View>
-          </>
-        ) : null}
+        <Divider />
 
-        <Pressable
+        <NativeButton
+          label="Krijo koleksion"
+          systemImage="plus"
           onPress={onCreateCollection}
-          style={({ pressed }) => [
-            styles.createCollectionButton,
-            {
-              borderColor: borderLight,
-              opacity: pressed ? 0.72 : 1,
-            },
-          ]}
-        >
-          <IconPlus size={20} color={theme.primary} strokeWidth={2.6} />
-
-          <ThemedText
-            style={[styles.createCollectionText, { color: theme.primary }]}
-          >
-            Krijo koleksion
-          </ThemedText>
-        </Pressable>
-      </BottomSheetScrollView>
-    </BottomSheetModal>
-  );
-}
-
-function FilterRow({
-  title,
-  subtitle,
-  icon,
-  colorDot,
-  selected,
-  onPress,
-  last,
-}: {
-  title: string;
-  subtitle?: string;
-  icon?: React.ReactNode;
-  colorDot?: string;
-  selected: boolean;
-  onPress: () => void;
-  last?: boolean;
-}) {
-  const theme = useTheme();
-
-  const t = theme as any;
-  const primarySoft = t.primarySoft ?? "#FFF0ED";
-  const borderLight = t.borderLight ?? theme.border;
-
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.filterRow,
-        {
-          borderBottomColor: last ? "transparent" : borderLight,
-          opacity: pressed ? 0.7 : 1,
-        },
-      ]}
-    >
-      <View
-        style={[
-          styles.filterIcon,
-          { backgroundColor: selected ? primarySoft : "rgba(39,31,23,0.04)" },
-        ]}
-      >
-        {icon ? (
-          icon
-        ) : (
-          <View style={[styles.colorDot, { backgroundColor: colorDot }]} />
-        )}
-      </View>
-
-      <View style={styles.filterCopy}>
-        <ThemedText style={styles.filterTitle}>{title}</ThemedText>
-
-        {subtitle ? (
-          <ThemedText type="subhead" themeColor="textSecondary">
-            {subtitle}
-          </ThemedText>
-        ) : null}
-      </View>
-
-      {selected ? (
-        <View style={[styles.checkBadge, { backgroundColor: theme.primary }]}>
-          <IconCheck size={15} color="#FFFFFF" strokeWidth={3} />
-        </View>
-      ) : null}
-    </Pressable>
+        />
+      </Menu>
+    </Host>
   );
 }
 
@@ -697,11 +504,13 @@ function RecipeGridCard({
   onPress: () => void;
 }) {
   const theme = useTheme();
+  const [imageFailed, setImageFailed] = useState(false);
 
   const t = theme as any;
   const surface = t.surface ?? "#F7F6F2";
   const borderLight = t.borderLight ?? theme.border;
-  const primarySoft = t.primarySoft ?? surface;
+  const textTertiary = t.textTertiary ?? "#A8A096";
+  const imageSource = imageFailed ? undefined : getRecipeImageSource(recipe);
 
   return (
     <Pressable
@@ -718,15 +527,24 @@ function RecipeGridCard({
         style={[
           styles.recipeImageWrap,
           {
-            backgroundColor: recipe.imageUrl ? surface : primarySoft,
+            backgroundColor: surface,
             borderColor: borderLight,
           },
         ]}
       >
-        {recipe.imageUrl ? (
-          <Image source={{ uri: recipe.imageUrl }} style={styles.recipeImage} />
+        {imageSource ? (
+          <>
+            <Image
+              source={{ uri: imageSource }}
+              style={styles.recipeImage}
+              contentFit="cover"
+              transition={180}
+              onError={() => setImageFailed(true)}
+            />
+            <View style={styles.recipeImageOverlay} />
+          </>
         ) : (
-          <IconChefHat size={31} color={theme.primary} strokeWidth={2.1} />
+          <IconChefHat size={31} color={textTertiary} strokeWidth={2.1} />
         )}
 
         {recipe.isFavorite ? (
@@ -793,6 +611,14 @@ function FolderCard({
   );
 }
 
+function getRecipeImageSource(recipe: RecipeLike) {
+  const value = recipe.imageThumbnailUrl ?? recipe.imageUrl;
+
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
 function buildGuestCollections(recipes: RecipeLike[]) {
   const uncategorized = recipes.filter(
     (recipe) => !recipe.collectionIds || recipe.collectionIds.length === 0,
@@ -818,12 +644,12 @@ function getRecipeKey(recipe: RecipeLike) {
 }
 
 function getFilterLabel(filter: LibraryFilter) {
-  if (filter.type === "all") return "Të gjitha recetat";
+  if (filter.type === "all") return "Të gjitha";
   if (filter.type === "favorites") return "Favoritet";
   if (filter.type === "uncategorized") return "Pa kategori";
   if (filter.type === "collection") return filter.label;
 
-  return "Të gjitha recetat";
+  return "Të gjitha";
 }
 
 function formatUsageLabel(usage?: ImportUsageSummary) {
@@ -838,13 +664,6 @@ function formatRecipeCount(count: number) {
   if (count === 1) return "1 recetë";
 
   return `${count} receta`;
-}
-
-function formatCollectionCount(count: number) {
-  if (count === 0) return "0 koleksione";
-  if (count === 1) return "1 koleksion";
-
-  return `${count} koleksione`;
 }
 
 function shadeColor(hex: string, percent: number) {
@@ -864,11 +683,6 @@ function shadeColor(hex: string, percent: number) {
 }
 
 const styles = StyleSheet.create({
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.sm,
-  },
   usagePill: {
     minHeight: 42,
     borderRadius: Radius.full,
@@ -886,40 +700,20 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     fontWeight: "900",
   },
-  headerIconButton: {
-    width: 42,
-    height: 42,
-    borderRadius: Radius.full,
-    backgroundColor: "rgba(247, 246, 242, 0.88)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(39, 31, 23, 0.06)",
-    alignItems: "center",
+  filterHeader: {
+    marginTop: -Spacing.sm,
+    marginBottom: Spacing.lg,
+    alignSelf: "flex-start",
+  },
+  filterMenuHost: {
+    minWidth: 140,
+    height: 40,
+    alignItems: "flex-start",
     justifyContent: "center",
   },
   content: {
+    paddingTop: Spacing.sm,
     paddingBottom: 150,
-  },
-  stateBlock: {
-    marginTop: Spacing.lg,
-    marginBottom: Spacing.xl,
-  },
-  stateTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.xs,
-  },
-  stateTitle: {
-    fontSize: 31,
-    lineHeight: 37,
-    fontWeight: "900",
-    letterSpacing: -0.6,
-  },
-  stateSubtitle: {
-    marginTop: 2,
-    fontSize: 17,
-    lineHeight: 23,
-    fontWeight: "800",
-    color: "#756F66",
   },
   loadingState: {
     marginTop: Spacing.xxxl,
@@ -953,8 +747,8 @@ const styles = StyleSheet.create({
     width: "47%",
   },
   recipeImageWrap: {
-    aspectRatio: 1,
-    borderRadius: Radius.xl,
+    aspectRatio: 4 / 5,
+    borderRadius: Radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: "hidden",
     alignItems: "center",
@@ -964,16 +758,26 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
+  recipeImageOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "42%",
+    backgroundColor: "rgba(0,0,0,0.08)",
+  },
   favoriteBadge: {
     position: "absolute",
-    right: 9,
-    top: 9,
-    width: 26,
-    height: 26,
+    right: 10,
+    top: 10,
+    width: 30,
+    height: 30,
     borderRadius: Radius.full,
     backgroundColor: "#EF4A38",
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.65)",
   },
   recipeTitle: {
     marginTop: Spacing.sm,
@@ -1046,91 +850,5 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.xxxl,
     alignItems: "center",
     gap: Spacing.md,
-  },
-  sheetContent: {
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.lg,
-    paddingBottom: Spacing.xxxl,
-  },
-  sheetHeader: {
-    marginBottom: Spacing.lg,
-  },
-  sheetTitle: {
-    fontSize: 28,
-    lineHeight: 34,
-    fontWeight: "900",
-    letterSpacing: -0.5,
-    textAlign: "center",
-  },
-  sheetSubtitle: {
-    marginTop: Spacing.xs,
-    fontSize: 15,
-    lineHeight: 21,
-    fontWeight: "700",
-    textAlign: "center",
-  },
-  sheetSectionLabel: {
-    marginTop: Spacing.xl,
-    marginBottom: Spacing.sm,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: "900",
-    textTransform: "uppercase",
-    letterSpacing: 0.7,
-  },
-  sheetGroup: {
-    borderRadius: Radius.xl,
-    overflow: "hidden",
-  },
-  filterRow: {
-    minHeight: 74,
-    paddingHorizontal: Spacing.md,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  filterIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  filterCopy: {
-    flex: 1,
-    gap: 2,
-  },
-  filterTitle: {
-    fontSize: 17,
-    lineHeight: 23,
-    fontWeight: "900",
-  },
-  checkBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: Radius.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  colorDot: {
-    width: 18,
-    height: 18,
-    borderRadius: Radius.full,
-  },
-  createCollectionButton: {
-    marginTop: Spacing.xl,
-    minHeight: 56,
-    borderRadius: Radius.xl,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: Spacing.sm,
-  },
-  createCollectionText: {
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: "900",
   },
 });

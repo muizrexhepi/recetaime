@@ -5,14 +5,15 @@ import {
   IconSettings,
   IconShare3,
   IconUser,
+  IconUserPlus,
 } from "@tabler/icons-react-native";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { Pressable, Share, StyleSheet, View } from "react-native";
 
 import { TabScreen } from "@/components/tabs/tab-screen";
+import { TabScreenHeader } from "@/components/tabs/tab-screen-header";
 import { ThemedText } from "@/components/ui/themed-text";
-import { ThemedView } from "@/components/ui/themed-view";
 import { Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/providers/auth-provider";
@@ -33,7 +34,8 @@ export default function ProfileScreen() {
 
   const t = theme as any;
   const surface = t.surface ?? "#F7F6F2";
-  const primarySoft = t.primarySoft ?? surface;
+  const paper = t.paper ?? "#FFFFFF";
+  const primarySoft = t.primarySoft ?? "#FFF0ED";
   const borderLight = t.borderLight ?? theme.border;
   const textSecondary = t.textSecondary ?? "#756F66";
   const textTertiary = t.textTertiary ?? textSecondary;
@@ -45,27 +47,27 @@ export default function ProfileScreen() {
     : getGuestName(guestId);
 
   const handleCreateAccount = () => {
-    Haptics.selectionAsync();
+    void Haptics.selectionAsync();
     router.push("/onboarding/create-account" as any);
   };
 
   const handleSubscription = () => {
-    Haptics.selectionAsync();
+    void Haptics.selectionAsync();
     router.push("/paywall" as any);
   };
 
   const handleSettings = () => {
-    Haptics.selectionAsync();
+    void Haptics.selectionAsync();
     router.push("/settings" as any);
   };
 
   const handleHelp = () => {
-    Haptics.selectionAsync();
+    void Haptics.selectionAsync();
     router.push("/settings" as any);
   };
 
   const handleShare = async () => {
-    Haptics.selectionAsync();
+    void Haptics.selectionAsync();
 
     await Share.share({
       title: "Receta Ime",
@@ -78,91 +80,115 @@ export default function ProfileScreen() {
 
   return (
     <TabScreen>
-      <ThemedView transparent style={styles.profileHeader}>
+      <TabScreenHeader title="Profili" />
+
+      <View
+        style={[
+          styles.accountCard,
+          {
+            backgroundColor: paper,
+            borderColor: borderLight,
+          },
+        ]}
+      >
         <View style={[styles.avatar, { backgroundColor: primarySoft }]}>
-          <IconUser size={34} color={theme.primary} strokeWidth={2.15} />
+          <IconUser size={30} color={theme.primary} strokeWidth={2.2} />
         </View>
 
-        <ThemedText type="title" style={styles.name} numberOfLines={1}>
-          {displayName}
-        </ThemedText>
+        <View style={styles.accountCopy}>
+          <ThemedText style={styles.name} numberOfLines={1}>
+            {displayName}
+          </ThemedText>
 
-        {hasAccount ? (
-          <View
-            style={[
-              styles.statusPill,
-              { backgroundColor: surface, borderColor: borderLight },
-            ]}
+          <ThemedText
+            style={[styles.accountSubtitle, { color: textSecondary }]}
           >
-            <ThemedText style={[styles.statusText, { color: textSecondary }]}>
-              Llogari aktive
+            {hasAccount
+              ? "Llogari aktive"
+              : "Je duke përdorur aplikacionin si mysafir."}
+          </ThemedText>
+        </View>
+      </View>
+
+      {!hasAccount ? (
+        <Pressable
+          onPress={handleCreateAccount}
+          style={({ pressed }) => [
+            styles.createAccountCard,
+            {
+              backgroundColor: primarySoft,
+              borderColor: "rgba(239, 74, 56, 0.18)",
+              opacity: pressed ? 0.78 : 1,
+            },
+          ]}
+        >
+          <View style={[styles.createIcon, { backgroundColor: theme.primary }]}>
+            <IconUserPlus size={22} color="#FFFFFF" strokeWidth={2.3} />
+          </View>
+
+          <View style={styles.rowCopy}>
+            <ThemedText style={styles.rowTitle}>Krijo llogari</ThemedText>
+
+            <ThemedText style={[styles.rowSubtitle, { color: textSecondary }]}>
+              Ruaji recetat në cloud dhe mos i humb.
             </ThemedText>
           </View>
-        ) : (
-          <Pressable onPress={handleCreateAccount} hitSlop={10}>
-            <ThemedText
-              style={[styles.createAccount, { color: theme.primary }]}
-            >
-              Krijo llogari
-            </ThemedText>
-          </Pressable>
-        )}
-      </ThemedView>
 
-      <View style={[styles.sectionLine, { backgroundColor: borderLight }]} />
+          <IconChevronRight size={21} color={theme.primary} strokeWidth={2.3} />
+        </Pressable>
+      ) : null}
 
-      <ProfileRow
-        icon={
-          <View style={[styles.proIconBox, { backgroundColor: goldSoft }]}>
-            <IconCrown size={23} color={gold} strokeWidth={2.25} />
-          </View>
-        }
-        title="Receta Ime Pro"
-        subtitle="Importime pa limit, kalori & makro, plan vaktesh."
-        onPress={handleSubscription}
-        elevated
-      />
+      <View style={styles.section}>
+        <ProfileRow
+          icon={
+            <View style={[styles.proIconBox, { backgroundColor: goldSoft }]}>
+              <IconCrown size={23} color={gold} strokeWidth={2.25} />
+            </View>
+          }
+          title="Receta Ime Pro"
+          subtitle="Importime pa limit, koleksione dhe veçori premium."
+          onPress={handleSubscription}
+          elevated
+        />
+      </View>
 
-      <View style={[styles.sectionLine, { backgroundColor: borderLight }]} />
+      <View style={styles.section}>
+        <ProfileRow
+          icon={
+            <View style={[styles.iconBox, { backgroundColor: surface }]}>
+              <IconShare3 size={21} color={textSecondary} strokeWidth={2.2} />
+            </View>
+          }
+          title="Fto miq"
+          subtitle="Dërgo Receta Ime te dikush që ruan receta."
+          onPress={handleShare}
+        />
 
-      <ProfileRow
-        icon={
-          <View style={[styles.iconBox, { backgroundColor: surface }]}>
-            <IconShare3 size={21} color={textSecondary} strokeWidth={2.2} />
-          </View>
-        }
-        title="Fto miq"
-        subtitle="Dërgo Receta Ime te dikush që ruan receta."
-        onPress={handleShare}
-      />
+        <ProfileRow
+          icon={
+            <View style={[styles.iconBox, { backgroundColor: surface }]}>
+              <IconHelp size={21} color={textSecondary} strokeWidth={2.2} />
+            </View>
+          }
+          title="Ndihmë"
+          subtitle="Kontakt, feedback, privacy dhe terms."
+          onPress={handleHelp}
+        />
 
-      <ProfileRow
-        icon={
-          <View style={[styles.iconBox, { backgroundColor: surface }]}>
-            <IconHelp size={21} color={textSecondary} strokeWidth={2.2} />
-          </View>
-        }
-        title="Ndihmë"
-        subtitle="Kontakt, feedback, privacy dhe terms."
-        onPress={handleHelp}
-      />
+        <ProfileRow
+          icon={
+            <View style={[styles.iconBox, { backgroundColor: surface }]}>
+              <IconSettings size={21} color={textSecondary} strokeWidth={2.2} />
+            </View>
+          }
+          title="Cilësimet"
+          subtitle="Llogaria, abonimi dhe preferencat."
+          onPress={handleSettings}
+          last
+        />
+      </View>
 
-      <ProfileRow
-        icon={
-          <View style={[styles.iconBox, { backgroundColor: surface }]}>
-            <IconSettings size={21} color={textSecondary} strokeWidth={2.2} />
-          </View>
-        }
-        title="Cilësimet"
-        subtitle="Llogaria, abonimi dhe preferencat."
-        onPress={handleSettings}
-      />
-
-      <ThemedText
-        type="subhead"
-        themeColor="textTertiary"
-        style={styles.version}
-      >
+      <ThemedText style={[styles.version, { color: textTertiary }]}>
         Version 1.0.0
       </ThemedText>
     </TabScreen>
@@ -175,19 +201,23 @@ function ProfileRow({
   subtitle,
   onPress,
   elevated,
+  last,
 }: {
   icon: React.ReactNode;
   title: string;
   subtitle?: string;
   onPress?: () => void;
   elevated?: boolean;
+  last?: boolean;
 }) {
   const theme = useTheme();
 
   const t = theme as any;
+  const paper = t.paper ?? "#FFFFFF";
   const borderLight = t.borderLight ?? theme.border;
+  const textSecondary = t.textSecondary ?? "#756F66";
   const textTertiary = t.textTertiary ?? theme.textSecondary;
-  const primarySoft = t.primarySoft ?? "#F7F6F2";
+  const primarySoft = t.primarySoft ?? "#FFF0ED";
 
   return (
     <Pressable
@@ -195,14 +225,14 @@ function ProfileRow({
       style={({ pressed }) => [
         styles.row,
         {
-          borderBottomColor: borderLight,
-          opacity: pressed ? 0.58 : 1,
+          backgroundColor: elevated ? primarySoft : paper,
+          borderBottomColor: last || elevated ? "transparent" : borderLight,
+          opacity: pressed ? 0.68 : 1,
         },
         elevated
           ? [
               styles.proRow,
               {
-                backgroundColor: primarySoft,
                 borderColor: "rgba(239, 74, 56, 0.18)",
               },
             ]
@@ -215,11 +245,7 @@ function ProfileRow({
         <ThemedText style={styles.rowTitle}>{title}</ThemedText>
 
         {subtitle ? (
-          <ThemedText
-            type="subhead"
-            themeColor="textSecondary"
-            style={styles.rowSubtitle}
-          >
+          <ThemedText style={[styles.rowSubtitle, { color: textSecondary }]}>
             {subtitle}
           </ThemedText>
         ) : null}
@@ -247,50 +273,64 @@ function getGuestName(guestId?: string) {
 }
 
 const styles = StyleSheet.create({
-  profileHeader: {
+  accountCard: {
+    marginTop: Spacing.xl,
+    minHeight: 88,
+    borderRadius: Radius.xxl,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: Spacing.lg,
+    flexDirection: "row",
     alignItems: "center",
-    paddingTop: Spacing.xl,
-    paddingBottom: Spacing.xxl,
-    gap: Spacing.xs,
+    gap: Spacing.md,
   },
   avatar: {
-    width: 86,
-    height: 86,
+    width: 58,
+    height: 58,
     borderRadius: Radius.full,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: Spacing.md,
+  },
+  accountCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
   },
   name: {
-    maxWidth: "90%",
-    fontSize: 31,
-    lineHeight: 38,
-    textAlign: "center",
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: "900",
+    letterSpacing: -0.4,
   },
-  statusPill: {
-    marginTop: Spacing.xs,
-    borderRadius: Radius.full,
+  accountSubtitle: {
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: "700",
+  },
+  createAccountCard: {
+    marginTop: Spacing.md,
+    minHeight: 78,
+    borderRadius: Radius.xxl,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.md,
   },
-  statusText: {
-    fontSize: 15,
-    lineHeight: 19,
-    fontWeight: "800",
+  createIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.full,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  createAccount: {
-    marginTop: Spacing.xs,
-    fontSize: 17,
-    lineHeight: 23,
-    fontWeight: "800",
-  },
-  sectionLine: {
-    height: StyleSheet.hairlineWidth,
-    marginHorizontal: -Spacing.xl,
+  section: {
+    marginTop: Spacing.xl,
+    borderRadius: Radius.xxl,
+    overflow: "hidden",
   },
   row: {
-    minHeight: 76,
+    minHeight: 78,
+    paddingHorizontal: Spacing.lg,
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.md,
@@ -298,12 +338,8 @@ const styles = StyleSheet.create({
   },
   proRow: {
     minHeight: 92,
-    marginTop: Spacing.lg,
-    marginBottom: Spacing.lg,
-    paddingHorizontal: Spacing.lg,
-    borderRadius: Radius.xl,
+    borderRadius: Radius.xxl,
     borderWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   iconBox: {
     width: 46,
@@ -321,12 +357,13 @@ const styles = StyleSheet.create({
   },
   rowCopy: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
   rowTitle: {
-    fontSize: 19,
-    lineHeight: 25,
-    fontWeight: "800",
+    fontSize: 17,
+    lineHeight: 23,
+    fontWeight: "900",
   },
   rowSubtitle: {
     fontSize: 14,
@@ -337,5 +374,8 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xxl,
     marginBottom: Spacing.xxl,
     textAlign: "center",
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
   },
 });

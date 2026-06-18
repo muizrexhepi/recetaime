@@ -16,8 +16,8 @@ import { ThemedButton } from "@/components/ui/themed-button";
 import { ThemedText } from "@/components/ui/themed-text";
 import { ThemedView } from "@/components/ui/themed-view";
 import { Radius, Shadows, Spacing } from "@/constants/theme";
-import { useTheme } from "@/hooks/use-theme";
 import { useCompleteOnboarding } from "@/hooks/use-complete-onboarding";
+import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/providers/auth-provider";
 
 type LoadingAction = "apple" | "guest" | null;
@@ -173,7 +173,12 @@ export function CreateAccountStep() {
           title="Vazhdo me email"
           variant={appleAvailable ? "outline" : "primary"}
           onPress={() => router.push("/onboarding/email-auth" as any)}
-          leftIcon={<IconMailFilled size={20} color={appleAvailable ? theme.text : "#FFFFFF"} />}
+          leftIcon={
+            <IconMailFilled
+              size={20}
+              color={appleAvailable ? theme.text : "#FFFFFF"}
+            />
+          }
           rightIcon={
             <IconChevronRight
               size={19}

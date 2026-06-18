@@ -13,12 +13,13 @@ import {
 } from "@tabler/icons-react-native";
 import { useMutation, useQuery } from "convex/react";
 import * as Haptics from "expo-haptics";
+import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   ActionSheetIOS,
   Alert,
-  Image,
   Linking,
   Platform,
   Pressable,
@@ -33,6 +34,7 @@ import { ThemedText } from "@/components/ui/themed-text";
 import { colors, Fonts, Radius, Shadows, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/providers/auth-provider";
+import { uploadRecipeImageSet } from "@/lib/recipe-image-upload";
 import { type GuestRecipe, useGuestStore } from "@/stores/guest-store";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -45,6 +47,9 @@ type RecipeDetail = Partial<GuestRecipe> & {
   sourceType?: string;
   sourceUrl?: string;
   imageUrl?: string;
+  imageThumbnailUrl?: string;
+  imageStorageId?: string;
+  thumbnailStorageId?: string;
   servings?: number;
   prepTimeMinutes?: number;
   cookTimeMinutes?: number;
@@ -100,6 +105,11 @@ export default function RecipeDetailScreen() {
 
   const toggleFavorite = useMutation(api.recipes.toggleFavorite);
   const removeRecipe = useMutation(api.recipes.remove);
+  const generateImageUploadUrl = useMutation(api.recipes.generateImageUploadUrl);
+  const updateRecipeImage = useMutation(api.recipes.updateImage);
+  const updateGuestRecipeImage = useGuestStore((state) => state.updateRecipeImage);
+  const [imageSaving, setImageSaving] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
 
   const guestRecipe = useMemo(() => {
     if (!recipeId) return null;
@@ -113,6 +123,8 @@ export default function RecipeDetailScreen() {
   }, [guestRecipes, recipeId]) as RecipeDetail | null;
 
   const recipe = isGuest ? guestRecipe : accountRecipe;
+  const recipeImageSource =
+    recipe && !imageFailed ? getRecipeImageSource(recipe) : undefined;
 
   const t = theme as any;
   const surface = t.surface ?? "#F7F6F2";
@@ -275,6 +287,83 @@ export default function RecipeDetailScreen() {
     });
   };
 
+  const savePickedImage = async (uri: string) => {
+    if (!recipe || imageSaving) return;
+
+    setImageSaving(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    try {
+      const uploaded = await uploadRecipeImageSet(uri, generateImageUploadUrl);
+      setImageFailed(false);
+
+      if (isGuest) {
+        const localId = String(recipe.localId ?? recipe._id ?? "");
+        if (localId) {
+          updateGuestRecipeImage(localId, {
+            ...uploaded,
+            imageUrl: uri,
+            imageThumbnailUrl: uri,
+          });
+        }
+      } else if (token && recipe._id) {
+        await updateRecipeImage({
+          token,
+          recipeId: recipe._id as Id<"recipes">,
+          imageStorageId: uploaded.imageStorageId as Id<"_storage">,
+          thumbnailStorageId: uploaded.thumbnailStorageId as Id<"_storage">,
+        });
+      }
+    } catch (error) {
+      Alert.alert(
+        "Foto nuk u ruajt",
+        error instanceof Error ? error.message : "Provo përsëri.",
+      );
+    } finally {
+      setImageSaving(false);
+    }
+  };
+
+  const pickRecipeImage = async () => {
+    if (!recipe) return;
+
+    const chooseLibrary = async () => {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        quality: 0.86,
+        allowsEditing: false,
+      });
+
+      if (!result.canceled) {
+        await savePickedImage(result.assets[0].uri);
+      }
+    };
+
+    const chooseCamera = async () => {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Lejo kamerën", "Lejo kamerën për të fotografuar recetën.");
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        quality: 0.86,
+        allowsEditing: false,
+      });
+
+      if (!result.canceled) {
+        await savePickedImage(result.assets[0].uri);
+      }
+    };
+
+    Alert.alert("Ndrysho foton", "Zgjidh një foto për këtë recetë.", [
+      { text: "Galeria", onPress: () => void chooseLibrary() },
+      { text: "Kamera", onPress: () => void chooseCamera() },
+      { text: "Anulo", style: "cancel" },
+    ]);
+  };
+
   return (
     <>
       <Stack.Screen
@@ -355,7 +444,8 @@ export default function RecipeDetailScreen() {
             contentContainerStyle={styles.content}
             contentInsetAdjustmentBehavior="automatic"
           >
-            <View
+            <Pressable
+              onPress={pickRecipeImage}
               style={[
                 styles.heroImage,
                 {
@@ -364,16 +454,32 @@ export default function RecipeDetailScreen() {
                 },
               ]}
             >
-              {recipe.imageUrl ? (
-                <Image source={{ uri: recipe.imageUrl }} style={styles.image} />
-              ) : (
-                <IconChefHat
-                  size={52}
-                  color={theme.primary}
-                  strokeWidth={2.1}
+              {recipeImageSource ? (
+                <Image
+                  source={{ uri: recipeImageSource }}
+                  style={styles.image}
+                  contentFit="cover"
+                  transition={180}
+                  onError={() => setImageFailed(true)}
                 />
+              ) : (
+                <View style={styles.imagePlaceholder}>
+                  <IconChefHat
+                    size={52}
+                    color={theme.primary}
+                    strokeWidth={2.1}
+                  />
+                  <ThemedText style={[styles.imagePlaceholderText, { color: textSecondary }]}>
+                    Shto foto
+                  </ThemedText>
+                </View>
               )}
-            </View>
+              {imageSaving ? (
+                <View style={styles.imageSavingOverlay}>
+                  <ThemedText style={styles.imageSavingText}>Duke ruajtur...</ThemedText>
+                </View>
+              ) : null}
+            </Pressable>
 
             <ThemedText style={styles.title}>{recipe.title}</ThemedText>
 
@@ -644,6 +750,13 @@ function sourceLabel(sourceType?: string) {
   return "Recetë";
 }
 
+function getRecipeImageSource(recipe: RecipeDetail) {
+  const value = recipe.imageUrl ?? recipe.imageThumbnailUrl;
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -678,6 +791,32 @@ const styles = StyleSheet.create({
   image: {
     width: "100%",
     height: "100%",
+  },
+  imagePlaceholder: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.sm,
+  },
+  imagePlaceholderText: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "900",
+  },
+  imageSavingOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: "rgba(39,31,23,0.38)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  imageSavingText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "900",
   },
   title: {
     marginTop: Spacing.xl,

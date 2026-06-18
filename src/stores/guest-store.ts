@@ -15,12 +15,21 @@ export type GuestRecipe = {
     | "youtube"
     | "whatsapp"
     | "photo"
+    | "text"
     | "manual"
-    | "web";
+    | "web"
+    | "unknown";
 
     sourceUrl?: string;
     sourceText?: string;
     imageUrl?: string;
+    imageThumbnailUrl?: string;
+    imageStorageId?: string;
+    thumbnailStorageId?: string;
+    sourcePlatform?: "tiktok" | "instagram" | "manual" | "photo" | "text" | "unknown";
+    sourceTitle?: string;
+    sourceAuthor?: string;
+    sourceThumbnailUrl?: string;
 
     ingredients: {
         text: string;
@@ -32,10 +41,13 @@ export type GuestRecipe = {
     }[];
 
     steps: string[];
+    tips?: string[];
 
     servings?: number;
     prepTimeMinutes?: number;
     cookTimeMinutes?: number;
+    extractionConfidence?: "low" | "medium" | "high";
+    extractionWarnings?: string[];
 
     collectionIds: string[];
 
@@ -88,6 +100,15 @@ type GuestState = {
 
     markRecipeSynced: (localId: string, serverId: string) => void;
     markRecipeFailed: (localId: string) => void;
+    updateRecipeImage: (
+        localId: string,
+        image: {
+            imageUrl?: string;
+            imageThumbnailUrl?: string;
+            imageStorageId?: string;
+            thumbnailStorageId?: string;
+        },
+    ) => void;
 
     resetGuest: () => void;
 };
@@ -200,6 +221,19 @@ export const useGuestStore = create<GuestState>()(
                             ? {
                                 ...recipe,
                                 syncStatus: "failed",
+                                updatedAt: Date.now(),
+                            }
+                            : recipe,
+                    ),
+                })),
+
+            updateRecipeImage: (localId, image) =>
+                set((state) => ({
+                    recipes: state.recipes.map((recipe) =>
+                        recipe.localId === localId || String(recipe.serverId) === String(localId)
+                            ? {
+                                ...recipe,
+                                ...image,
                                 updatedAt: Date.now(),
                             }
                             : recipe,

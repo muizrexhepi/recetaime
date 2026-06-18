@@ -11,8 +11,10 @@ export type ImportSourceType =
   | "youtube"
   | "whatsapp"
   | "photo"
+  | "text"
   | "manual"
-  | "web";
+  | "web"
+  | "unknown";
 
 export type NeedsInputReason =
   | "NO_CAPTION_TEXT"
@@ -21,7 +23,8 @@ export type NeedsInputReason =
   | "SOCIAL_SCRAPER_NOT_CONFIGURED"
   | "SOCIAL_SCRAPER_FAILED"
   | "NOT_RECIPE_LIKE"
-  | "AI_PARSE_FAILED";
+  | "AI_PARSE_FAILED"
+  | "NO_IMAGE_AVAILABLE";
 
 export type DebugExtraction = {
   source:
@@ -55,12 +58,15 @@ export type ParsedRecipe = {
     confidence: Confidence;
   }[];
   steps: string[];
+  tips?: string[];
   servings?: number;
   prepTimeMinutes?: number;
   cookTimeMinutes?: number;
   tags: string[];
   cuisine?: string;
   ambiguityNotes: string[];
+  missingInfo?: string[];
+  warnings?: string[];
   needsUserReview: boolean;
   confidence: Confidence;
 };
@@ -78,6 +84,14 @@ export type ImportDraft = {
   sourceUrl?: string;
   sourceText?: string;
   imageUri?: string;
+  imageStorageId?: string;
+  thumbnailStorageId?: string;
+  imageUrl?: string;
+  imageThumbnailUrl?: string;
+  sourcePlatform?: "tiktok" | "instagram" | "manual" | "photo" | "text" | "unknown";
+  sourceTitle?: string;
+  sourceAuthor?: string;
+  sourceThumbnailUrl?: string;
   rawContent?: {
     title?: string;
     caption?: string;

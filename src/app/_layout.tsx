@@ -36,7 +36,8 @@ function RootNavigation() {
   );
 
   const isOnboarding = pathname.startsWith("/onboarding");
-  const isImporting = pathname.startsWith("/import-recipe");
+  const isImporting =
+    pathname.startsWith("/import-recipe") || pathname.startsWith("/import/");
 
   const onboardingComplete =
     (isAuthenticated && user?.onboardingCompleted) || guestOnboardingCompleted;
@@ -88,13 +89,25 @@ function RootNavigation() {
   useEffect(() => {
     if (isLoading) return;
 
+    const isOnboardingIndex =
+      pathname === "/onboarding" || pathname === "/onboarding/";
+
+    const isAuthRoute =
+      pathname.startsWith("/onboarding/create-account") ||
+      pathname.startsWith("/onboarding/sign-in") ||
+      pathname.startsWith("/onboarding/login") ||
+      pathname.startsWith("/onboarding/auth");
+
     if (isAuthenticated && user) {
       if (!user.onboardingCompleted && !isOnboarding) {
         router.replace("/onboarding" as any);
         return;
       }
 
-      if (user.onboardingCompleted && (pathname === "/" || isOnboarding)) {
+      if (
+        user.onboardingCompleted &&
+        (pathname === "/" || isOnboardingIndex || isAuthRoute)
+      ) {
         router.replace("/(tabs)/cookbooks" as any);
         return;
       }
@@ -110,7 +123,9 @@ function RootNavigation() {
       return;
     }
 
-    if (guestOnboardingCompleted && (pathname === "/" || isOnboarding)) {
+    // Guest has completed onboarding.
+    // Let them open login/create-account screens.
+    if (guestOnboardingCompleted && (pathname === "/" || isOnboardingIndex)) {
       router.replace("/(tabs)/cookbooks" as any);
     }
   }, [

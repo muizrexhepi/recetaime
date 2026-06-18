@@ -1,6 +1,7 @@
 import {
   IconAlertCircle,
   IconArrowRight,
+  IconChefHat,
   IconCheck,
   IconClipboardList,
   IconLink,
@@ -19,6 +20,7 @@ import { useShareIntentContext } from "expo-share-intent";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Animated,
+  Alert,
   Keyboard,
   Pressable,
   ScrollView,
@@ -44,6 +46,7 @@ import {
   normalizeImportDraft,
   normalizeRouteMode,
 } from "@/lib/recipe-import";
+import { uploadRecipeImageSet } from "@/lib/recipe-image-upload";
 import { getShareIntentMeta } from "@/lib/share-intent-meta";
 import { useAuth } from "@/providers/auth-provider";
 import { useGuestStore } from "@/stores/guest-store";
@@ -220,6 +223,7 @@ function buildEditedRecipe(
   servingsText: string,
   prepTimeText: string,
   cookTimeText: string,
+  tipsText: string,
 ): ParsedRecipe | null {
   if (!base) return null;
 
@@ -242,6 +246,10 @@ function buildEditedRecipe(
   const servings = parseOptionalPositiveNumber(servingsText);
   const prepTimeMinutes = parseOptionalPositiveNumber(prepTimeText);
   const cookTimeMinutes = parseOptionalPositiveNumber(cookTimeText);
+  const tips = tipsText
+    .split(/\r?\n/)
+    .map((tip) => tip.trim())
+    .filter(Boolean);
 
   return {
     ...base,
@@ -249,6 +257,7 @@ function buildEditedRecipe(
     ...(description.trim() ? { description: description.trim() } : {}),
     ingredients,
     steps,
+    ...(tips.length > 0 ? { tips } : {}),
     ...(servings ? { servings } : {}),
     ...(prepTimeMinutes ? { prepTimeMinutes } : {}),
     ...(cookTimeMinutes ? { cookTimeMinutes } : {}),
@@ -272,7 +281,9 @@ export default function ImportRecipeScreen() {
 
   const parseImport = useAction(api.imports.parseDraft);
   const createRecipe = useMutation(api.recipes.createFromImport);
+  const generateImageUploadUrl = useMutation(api.recipes.generateImageUploadUrl);
   const addGuestRecipe = useGuestStore((state) => state.addRecipe);
+  const guestId = useGuestStore((state) => state.guestId);
 
   const storeDraft = useImportDraftStore((state) => state.draft);
   const setStoreDraft = useImportDraftStore((state) => state.setDraft);
@@ -321,6 +332,9 @@ export default function ImportRecipeScreen() {
   const [cookTimeText, setCookTimeText] = useState(
     initialDraft.parsedRecipe?.cookTimeMinutes?.toString() ?? "",
   );
+  const [tipsText, setTipsText] = useState(
+    initialDraft.parsedRecipe?.tips?.join("\n") ?? "",
+  );
 
   const [message, setMessage] = useState<string | null>(null);
   const [parsing, setParsing] = useState(false);
@@ -359,6 +373,7 @@ export default function ImportRecipeScreen() {
         servingsText,
         prepTimeText,
         cookTimeText,
+        tipsText,
       ),
     [
       cookTimeText,
@@ -368,6 +383,7 @@ export default function ImportRecipeScreen() {
       reviewRecipe,
       servingsText,
       stepRows,
+      tipsText,
       title,
     ],
   );
@@ -432,7 +448,7 @@ export default function ImportRecipeScreen() {
 
   const runParse = useCallback(
     async (draftOverride?: ImportDraft, supplementalText?: string) => {
-      const nextDraft =
+      let nextDraft =
         draftOverride ??
         buildDraftFromInput({
           mode,
@@ -457,12 +473,31 @@ export default function ImportRecipeScreen() {
       patchStoreDraft({ ...nextDraft, status: "extracting" });
 
       try {
+        if (nextDraft.imageUri && !nextDraft.imageStorageId) {
+          const uploaded = await uploadRecipeImageSet(
+            nextDraft.imageUri,
+            generateImageUploadUrl,
+          );
+
+          nextDraft = {
+            ...nextDraft,
+            ...uploaded,
+          };
+
+          setActiveDraft({ ...nextDraft, status: "extracting" });
+          patchStoreDraft({ ...nextDraft, status: "extracting" });
+        }
+
         const result = await parseImport({
           sourceType: nextDraft.sourceType,
+          ...(token ? { token } : {}),
+          ...(!token ? { guestId } : {}),
           ...(nextDraft.mode ? { mode: nextDraft.mode } : {}),
           ...(nextDraft.sourceUrl ? { sourceUrl: nextDraft.sourceUrl } : {}),
           ...(nextDraft.sourceText ? { sourceText: nextDraft.sourceText } : {}),
           ...(nextDraft.imageUri ? { imageUri: nextDraft.imageUri } : {}),
+          ...(nextDraft.imageStorageId ? { imageStorageId: nextDraft.imageStorageId as any } : {}),
+          ...(nextDraft.thumbnailStorageId ? { thumbnailStorageId: nextDraft.thumbnailStorageId as any } : {}),
           ...(nextDraft.rawContent ? { rawContent: nextDraft.rawContent } : {}),
         });
 
@@ -491,7 +526,7 @@ export default function ImportRecipeScreen() {
         setParsing(false);
       }
     },
-    [extraText, imageUri, mode, parseImport, patchStoreDraft, sourceValue],
+    [extraText, generateImageUploadUrl, guestId, imageUri, mode, parseImport, patchStoreDraft, sourceValue, token],
   );
 
   useEffect(() => {
@@ -545,7 +580,50 @@ export default function ImportRecipeScreen() {
     }
   };
 
-  const choosePhoto = async () => {
+  const applyPickedPhoto = async (uri: string) => {
+    if (reviewRecipe && activeDraft.status === "ready_for_review") {
+      const localPreviewDraft: ImportDraft = {
+        ...activeDraft,
+        imageUri: uri,
+        imageUrl: uri,
+        imageThumbnailUrl: uri,
+        status: "ready_for_review",
+      };
+
+      setImageUri(uri);
+      setActiveDraft(localPreviewDraft);
+      patchStoreDraft(localPreviewDraft);
+      setParsing(true);
+      setMessage(null);
+
+      try {
+        const uploaded = await uploadRecipeImageSet(uri, generateImageUploadUrl);
+        const nextDraft: ImportDraft = {
+          ...localPreviewDraft,
+          ...uploaded,
+          status: "ready_for_review",
+        };
+
+        setActiveDraft(nextDraft);
+        patchStoreDraft(nextDraft);
+      } catch (error) {
+        setMessage(
+          error instanceof Error ? error.message : "Nuk mundëm ta ngarkonim foton.",
+        );
+      } finally {
+        setParsing(false);
+      }
+      return;
+    }
+
+    setMode("photo");
+    setImageUri(uri);
+    setSourceValue("");
+    setActiveDraft(normalizeImportDraft({ mode: "photo", imageUri: uri }));
+    applyParsedRecipe(null);
+  };
+
+  const pickPhotoFromLibrary = async () => {
     Haptics.selectionAsync();
     setMessage(null);
 
@@ -558,13 +636,36 @@ export default function ImportRecipeScreen() {
     if (result.canceled) return;
 
     const asset = result.assets[0];
-    setMode("photo");
-    setImageUri(asset.uri);
-    setSourceValue("");
-    setActiveDraft(
-      normalizeImportDraft({ mode: "photo", imageUri: asset.uri }),
-    );
-    applyParsedRecipe(null);
+    await applyPickedPhoto(asset.uri);
+  };
+
+  const takeRecipePhoto = async () => {
+    Haptics.selectionAsync();
+    setMessage(null);
+
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      setMessage("Lejo kamerën për të fotografuar recetën.");
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["images"],
+      quality: 0.86,
+      allowsEditing: false,
+    });
+
+    if (result.canceled) return;
+
+    await applyPickedPhoto(result.assets[0].uri);
+  };
+
+  const choosePhoto = async () => {
+    Alert.alert("Shto foto", "Zgjidh një screenshot ose fotografo recetën.", [
+      { text: "Galeria", onPress: () => void pickPhotoFromLibrary() },
+      { text: "Kamera", onPress: () => void takeRecipePhoto() },
+      { text: "Anulo", style: "cancel" },
+    ]);
   };
 
   const attachScreenshotToDraft = async () => {
@@ -583,17 +684,19 @@ export default function ImportRecipeScreen() {
     const nextDraft: ImportDraft = {
       ...activeDraft,
       imageUri: asset.uri,
-      status: "needs_input",
-      warnings: [
-        "Screenshot-i u shtua. Ngjit edhe përshkrimin ose caption-in e recetës.",
-      ],
+      imageStorageId: undefined,
+      thumbnailStorageId: undefined,
+      imageUrl: undefined,
+      imageThumbnailUrl: undefined,
+      status: "extracting",
+      warnings: [],
     };
 
     setImageUri(asset.uri);
     setActiveDraft(nextDraft);
     patchStoreDraft(nextDraft);
-    setShowSupplementalInput(true);
-    setMessage(nextDraft.warnings[0]);
+    setShowSupplementalInput(false);
+    runParse(nextDraft);
   };
 
   const openSupplementalInput = async () => {
@@ -616,6 +719,23 @@ export default function ImportRecipeScreen() {
     runParse(nextDraft);
   };
 
+  const continueWithoutImage = () => {
+    if (!activeDraft.parsedRecipe) {
+      setMessage("Nuk arritëm ta lexojmë mirë recetën.");
+      return;
+    }
+
+    const nextDraft: ImportDraft = {
+      ...activeDraft,
+      status: "ready_for_review",
+      warnings: activeDraft.warnings ?? [],
+    };
+
+    setActiveDraft(nextDraft);
+    patchStoreDraft(nextDraft);
+    applyParsedRecipe(activeDraft.parsedRecipe);
+  };
+
   const saveRecipe = async () => {
     if (!editedRecipe || !canSave || saving) return;
 
@@ -624,22 +744,62 @@ export default function ImportRecipeScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
+      let draftForSave = activeDraft;
+
+      if (
+        draftForSave.imageUri &&
+        (!draftForSave.imageStorageId || !draftForSave.thumbnailStorageId)
+      ) {
+        const uploaded = await uploadRecipeImageSet(
+          draftForSave.imageUri,
+          generateImageUploadUrl,
+        );
+
+        draftForSave = {
+          ...draftForSave,
+          ...uploaded,
+          imageUrl: draftForSave.imageUrl ?? draftForSave.imageUri,
+          imageThumbnailUrl:
+            draftForSave.imageThumbnailUrl ?? draftForSave.imageUri,
+        };
+
+        setActiveDraft(draftForSave);
+        patchStoreDraft(draftForSave);
+      }
+
       const recipe = buildRecipeFromParsed({
-        draft: activeDraft,
+        draft: draftForSave,
         parsedRecipe: editedRecipe,
       });
 
       if (isAuthenticated && token) {
+        const shouldPersistImageUrl =
+          recipe.imageUrl &&
+          !recipe.imageUrl.startsWith("file:") &&
+          !recipe.imageStorageId &&
+          !recipe.thumbnailStorageId;
+        const shouldPersistThumbnailUrl =
+          recipe.imageThumbnailUrl &&
+          !recipe.imageThumbnailUrl.startsWith("file:") &&
+          !recipe.thumbnailStorageId;
         const recipeId = await createRecipe({
           token,
           title: recipe.title,
           ...(recipe.description ? { description: recipe.description } : {}),
           sourceType: recipe.sourceType,
+          ...(recipe.sourcePlatform ? { sourcePlatform: recipe.sourcePlatform } : {}),
           ...(recipe.sourceUrl ? { sourceUrl: recipe.sourceUrl } : {}),
           ...(recipe.sourceText ? { sourceText: recipe.sourceText } : {}),
-          ...(recipe.imageUrl ? { imageUrl: recipe.imageUrl } : {}),
+          ...(recipe.sourceTitle ? { sourceTitle: recipe.sourceTitle } : {}),
+          ...(recipe.sourceAuthor ? { sourceAuthor: recipe.sourceAuthor } : {}),
+          ...(recipe.sourceThumbnailUrl ? { sourceThumbnailUrl: recipe.sourceThumbnailUrl } : {}),
+          ...(shouldPersistImageUrl ? { imageUrl: recipe.imageUrl } : {}),
+          ...(shouldPersistThumbnailUrl ? { imageThumbnailUrl: recipe.imageThumbnailUrl } : {}),
+          ...(recipe.imageStorageId ? { imageStorageId: recipe.imageStorageId as any } : {}),
+          ...(recipe.thumbnailStorageId ? { thumbnailStorageId: recipe.thumbnailStorageId as any } : {}),
           ingredients: recipe.ingredients,
           steps: recipe.steps,
+          ...(recipe.tips ? { tips: recipe.tips } : {}),
           ...(recipe.servings ? { servings: recipe.servings } : {}),
           ...(recipe.prepTimeMinutes
             ? { prepTimeMinutes: recipe.prepTimeMinutes }
@@ -651,6 +811,12 @@ export default function ImportRecipeScreen() {
           language: editedRecipe.language,
           ...(editedRecipe.cuisine ? { cuisine: editedRecipe.cuisine } : {}),
           ambiguityNotes: editedRecipe.ambiguityNotes,
+          extractionConfidence: editedRecipe.confidence,
+          extractionWarnings: [
+            ...(editedRecipe.warnings ?? []),
+            ...(editedRecipe.missingInfo ?? []),
+            ...(editedRecipe.ambiguityNotes ?? []),
+          ],
           needsUserReview: editedRecipe.needsUserReview,
           importConfidence: editedRecipe.confidence,
         });
@@ -661,7 +827,15 @@ export default function ImportRecipeScreen() {
           source: "account",
         });
       } else {
-        const localId = addGuestRecipe(recipe);
+        const localId = addGuestRecipe({
+          ...recipe,
+          ...(recipe.imageUrl || draftForSave.imageUri
+            ? { imageUrl: recipe.imageUrl ?? draftForSave.imageUri }
+            : {}),
+          ...(recipe.imageThumbnailUrl || draftForSave.imageUri
+            ? { imageThumbnailUrl: recipe.imageThumbnailUrl ?? draftForSave.imageUri }
+            : {}),
+        });
         setSavedRecipe({
           title: recipe.title,
           id: localId,
@@ -695,6 +869,7 @@ export default function ImportRecipeScreen() {
     setServingsText(parsed?.servings?.toString() ?? "");
     setPrepTimeText(parsed?.prepTimeMinutes?.toString() ?? "");
     setCookTimeText(parsed?.cookTimeMinutes?.toString() ?? "");
+    setTipsText(parsed?.tips?.join("\n") ?? "");
   }
 
   if (isShareIntentEntry && !shareFallbackReady) {
@@ -786,17 +961,20 @@ export default function ImportRecipeScreen() {
                 stepRows={stepRows}
                 servingsText={servingsText}
                 prepTimeText={prepTimeText}
-                cookTimeText={cookTimeText}
-                draft={activeDraft}
-                parsed={reviewRecipe}
-                onTitleChange={setTitle}
+              cookTimeText={cookTimeText}
+              tipsText={tipsText}
+              draft={activeDraft}
+              parsed={reviewRecipe}
+              onTitleChange={setTitle}
                 onDescriptionChange={setDescription}
                 onIngredientRowsChange={setIngredientRows}
                 onStepRowsChange={setStepRows}
                 onServingsChange={setServingsText}
-                onPrepTimeChange={setPrepTimeText}
-                onCookTimeChange={setCookTimeText}
-              />
+              onPrepTimeChange={setPrepTimeText}
+              onCookTimeChange={setCookTimeText}
+              onTipsChange={setTipsText}
+              onChangeImage={choosePhoto}
+            />
             ) : null}
 
             {!savedRecipe && !shouldShowImporting && !isReadyForReview ? (
@@ -889,11 +1067,12 @@ export default function ImportRecipeScreen() {
                     showTextInput={showSupplementalInput}
                     onShowTextInput={openSupplementalInput}
                     onExtraTextChange={setExtraText}
-                    onRetry={retryWithSupplementalText}
-                    onUploadScreenshot={attachScreenshotToDraft}
-                    onCancel={() => router.back()}
-                    parsing={parsing}
-                  />
+                  onRetry={retryWithSupplementalText}
+                  onUploadScreenshot={attachScreenshotToDraft}
+                  onContinueWithoutImage={continueWithoutImage}
+                  onCancel={() => router.back()}
+                  parsing={parsing}
+                />
                 ) : null}
               </>
             ) : null}
@@ -946,6 +1125,7 @@ function ReviewForm({
   servingsText,
   prepTimeText,
   cookTimeText,
+  tipsText,
   draft,
   parsed,
   onTitleChange,
@@ -955,6 +1135,8 @@ function ReviewForm({
   onServingsChange,
   onPrepTimeChange,
   onCookTimeChange,
+  onTipsChange,
+  onChangeImage,
 }: {
   title: string;
   description: string;
@@ -963,6 +1145,7 @@ function ReviewForm({
   servingsText: string;
   prepTimeText: string;
   cookTimeText: string;
+  tipsText: string;
   draft: ImportDraft;
   parsed: ParsedRecipe;
   onTitleChange: (value: string) => void;
@@ -972,6 +1155,8 @@ function ReviewForm({
   onServingsChange: (value: string) => void;
   onPrepTimeChange: (value: string) => void;
   onCookTimeChange: (value: string) => void;
+  onTipsChange: (value: string) => void;
+  onChangeImage: () => void;
 }) {
   const theme = useTheme();
 
@@ -986,6 +1171,38 @@ function ReviewForm({
 
   return (
     <>
+      <Pressable onPress={onChangeImage}>
+      <ThemedCard
+        style={[
+          styles.reviewImageCard,
+          {
+            backgroundColor: theme.surface,
+            borderColor: theme.borderLight,
+          },
+        ]}
+      >
+        {draft.imageThumbnailUrl || draft.imageUrl || draft.imageUri ? (
+          <Image
+            source={{ uri: draft.imageThumbnailUrl ?? draft.imageUrl ?? draft.imageUri }}
+            style={styles.reviewImage}
+            contentFit="cover"
+          />
+        ) : (
+          <ThemedView
+            style={[
+              styles.reviewImagePlaceholder,
+              { backgroundColor: theme.surface, borderColor: theme.border },
+            ]}
+          >
+            <IconChefHat size={46} color={theme.primary} strokeWidth={2.1} />
+            <ThemedText style={styles.reviewImagePlaceholderText} color="secondary">
+              Shto foto
+            </ThemedText>
+          </ThemedView>
+        )}
+      </ThemedCard>
+      </Pressable>
+
       <ThemedCard
         style={[
           styles.reviewMetaCard,
@@ -1135,6 +1352,36 @@ function ReviewForm({
         rowPlaceholder="p.sh. Përzieji derisa masa të bëhet homogjene"
         numbered
       />
+
+      <ThemedCard
+        style={[
+          styles.reviewMetaCard,
+          {
+            backgroundColor: theme.surface,
+            borderColor: theme.borderLight,
+          },
+        ]}
+      >
+        <FieldLabel label="Këshilla" />
+        <TextInput
+          value={tipsText}
+          onChangeText={onTipsChange}
+          placeholder="Shto këshilla, nga një për rresht"
+          placeholderTextColor={theme.textTertiary}
+          multiline
+          scrollEnabled={false}
+          style={[
+            styles.input,
+            styles.smallTextArea,
+            styles.whiteInput,
+            {
+              color: theme.text,
+              borderColor: theme.border,
+              backgroundColor: theme.paper,
+            },
+          ]}
+        />
+      </ThemedCard>
 
       {parsed.ambiguityNotes.length > 0 ? (
         <ThemedCard
@@ -1449,6 +1696,7 @@ function FallbackCard({
   onExtraTextChange,
   onRetry,
   onUploadScreenshot,
+  onContinueWithoutImage,
   onCancel,
   parsing,
 }: {
@@ -1459,10 +1707,12 @@ function FallbackCard({
   onExtraTextChange: (value: string) => void;
   onRetry: () => void;
   onUploadScreenshot: () => void;
+  onContinueWithoutImage: () => void;
   onCancel: () => void;
   parsing: boolean;
 }) {
   const theme = useTheme();
+  const isMissingImage = draft.needsInputReason === "NO_IMAGE_AVAILABLE";
 
   return (
     <ThemedCard
@@ -1523,17 +1773,27 @@ function FallbackCard({
       ) : null}
 
       <ThemedView transparent style={styles.fallbackActions}>
+        {isMissingImage ? null : (
+          <ThemedButton
+            title="Ngjit përshkrimin"
+            onPress={onShowTextInput}
+            variant={showTextInput ? "ghost" : "secondary"}
+          />
+        )}
         <ThemedButton
-          title="Ngjit përshkrimin"
-          onPress={onShowTextInput}
-          variant={showTextInput ? "ghost" : "secondary"}
-        />
-        <ThemedButton
-          title="Ngarko screenshot"
+          title="Shto screenshot"
           onPress={onUploadScreenshot}
-          variant="outline"
+          variant={isMissingImage ? "secondary" : "outline"}
         />
-        <ThemedButton title="Anulo" onPress={onCancel} variant="ghost" />
+        {isMissingImage ? (
+          <ThemedButton
+            title="Vazhdo pa foto"
+            onPress={onContinueWithoutImage}
+            variant="outline"
+          />
+        ) : (
+          <ThemedButton title="Anulo" onPress={onCancel} variant="ghost" />
+        )}
       </ThemedView>
     </ThemedCard>
   );
@@ -1704,43 +1964,52 @@ function SavedCard({
   const theme = useTheme();
 
   return (
-    <ThemedCard
-      style={[
-        styles.savedCard,
-        { backgroundColor: theme.surface, borderColor: theme.borderLight },
-      ]}
-    >
-      <ThemedView
-        style={[
-          styles.savedIcon,
-          { backgroundColor: theme.primarySoft, borderColor: theme.border },
-        ]}
-      >
-        <IconCheck size={28} color={theme.primary} strokeWidth={3} />
+    <ThemedView transparent style={styles.savedWrap}>
+      <ThemedView transparent style={styles.savedIllustration}>
+        <LoadingIllustration />
+
+        <ThemedView
+          style={[
+            styles.savedCheck,
+            {
+              backgroundColor: theme.primary,
+              borderColor: theme.background,
+            },
+          ]}
+        >
+          <IconCheck size={25} color="#FFFFFF" strokeWidth={3.2} />
+        </ThemedView>
       </ThemedView>
 
       <ThemedText type="h2" align="center">
-        Receta u ruajt
+        Receta u ruajt me sukses.
       </ThemedText>
 
-      <ThemedText color="secondary" align="center" style={styles.subtitle}>
+      <ThemedText
+        color="secondary"
+        align="center"
+        numberOfLines={3}
+        style={styles.savedSubtitle}
+      >
         {title}
       </ThemedText>
 
-      <ThemedButton
-        title="Shiko recetën"
-        onPress={onView}
-        rightIcon={
-          <IconArrowRight size={18} color="#FFFFFF" strokeWidth={2.6} />
-        }
-      />
+      <ThemedView transparent style={styles.savedActions}>
+        <ThemedButton
+          title="Shiko recetën"
+          onPress={onView}
+          rightIcon={
+            <IconArrowRight size={18} color="#FFFFFF" strokeWidth={2.6} />
+          }
+        />
 
-      <ThemedButton
-        title={source === "guest" ? "Kthehu te recetat" : "Kthehu"}
-        onPress={onBack}
-        variant="ghost"
-      />
-    </ThemedCard>
+        <ThemedButton
+          title={source === "guest" ? "Kthehu te recetat" : "Kthehu"}
+          onPress={onBack}
+          variant="ghost"
+        />
+      </ThemedView>
+    </ThemedView>
   );
 }
 
@@ -1937,6 +2206,37 @@ const styles = StyleSheet.create({
   photoPreview: {
     width: "100%",
     height: 260,
+  },
+  reviewImageCard: {
+    padding: 0,
+    borderWidth: 1,
+    borderRadius: Radius.xxl,
+    overflow: "hidden",
+  },
+  reviewImage: {
+    width: "100%",
+    aspectRatio: 1.35,
+  },
+  reviewImagePlaceholder: {
+    width: "100%",
+    aspectRatio: 1.35,
+    borderWidth: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.sm,
+  },
+  reviewImagePlaceholderText: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "900",
+  },
+  reviewImageActions: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+  },
+  reviewImageActionButton: {
+    flex: 1,
+    paddingHorizontal: Spacing.sm,
   },
   formCardHeader: {
     flexDirection: "row",
@@ -2205,21 +2505,39 @@ const styles = StyleSheet.create({
     right: 40,
     top: 28,
   },
-  savedCard: {
-    marginTop: Spacing.xxl,
-    padding: Spacing.xxl,
+  savedWrap: {
+    paddingTop: Spacing.xxl,
+    paddingHorizontal: Spacing.md,
     gap: Spacing.lg,
-    borderWidth: 1,
-    borderRadius: Radius.xxl,
     alignItems: "center",
   },
-  savedIcon: {
-    width: 70,
-    height: 70,
-    borderRadius: Radius.xl,
-    borderWidth: 1,
+  savedIllustration: {
+    width: 230,
+    height: 210,
     alignItems: "center",
     justifyContent: "center",
+  },
+  savedCheck: {
+    position: "absolute",
+    right: 38,
+    bottom: 34,
+    width: 56,
+    height: 56,
+    borderRadius: Radius.full,
+    borderWidth: 4,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  savedSubtitle: {
+    maxWidth: 300,
+    fontSize: 17,
+    lineHeight: 24,
+    fontWeight: "700",
+  },
+  savedActions: {
+    width: "100%",
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
   },
   message: {
     textAlign: "center",

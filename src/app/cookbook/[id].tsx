@@ -137,7 +137,7 @@ export default function CookbookDetailScreen() {
           { text: "Anulo", style: "cancel" },
           {
             text: "Ruaj",
-            onPress: (value) => {
+            onPress: (value?: string) => {
               const title = value?.trim();
               if (!title) return;
 

@@ -34,6 +34,9 @@ export type ImportUsageSummary = {
   used: number;
   limit: number;
   remaining: number | null;
+  imageUsed?: number;
+  imageLimit?: number;
+  imageRemaining?: number | null;
   hasUnlimited: boolean;
   resetAt: number;
   daysUntilReset: number;
@@ -67,6 +70,9 @@ export const ImportUsageSheet = forwardRef<
     used: 0,
     limit: 5,
     remaining: 5,
+    imageUsed: 0,
+    imageLimit: 2,
+    imageRemaining: 2,
     hasUnlimited: false,
     resetAt: Date.now(),
     daysUntilReset: 7,
@@ -231,8 +237,9 @@ export const ImportUsageSheet = forwardRef<
             <ThemedText type="smallBold">Plani falas</ThemedText>
 
             <ThemedText type="small" color="secondary">
-              Ke 5 importe falas çdo javë. Zhblloko Pro për importe pa limit,
-              import më të shpejtë dhe veçori të avancuara.
+              Ke 5 importe falas çdo javë. Nga këto, {safeUsage.imageRemaining ?? 0} nga{" "}
+              {safeUsage.imageLimit ?? 2} importet me foto janë ende të lira.
+              Zhblloko Pro për importe pa limit dhe veçori të avancuara.
             </ThemedText>
           </ThemedCard>
         ) : null}

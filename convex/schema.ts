@@ -21,8 +21,19 @@ const importSource = v.union(
     v.literal("youtube"),
     v.literal("whatsapp"),
     v.literal("photo"),
+    v.literal("text"),
     v.literal("manual"),
     v.literal("web"),
+    v.literal("unknown"),
+);
+
+const sourcePlatform = v.union(
+    v.literal("tiktok"),
+    v.literal("instagram"),
+    v.literal("manual"),
+    v.literal("photo"),
+    v.literal("text"),
+    v.literal("unknown"),
 );
 
 const syncSource = v.union(
@@ -87,12 +98,15 @@ const parsedRecipe = v.object({
     language,
     ingredients: v.array(parsedIngredient),
     steps: v.array(v.string()),
+    tips: v.optional(v.array(v.string())),
     servings: v.optional(v.number()),
     prepTimeMinutes: v.optional(v.number()),
     cookTimeMinutes: v.optional(v.number()),
     tags: v.array(v.string()),
     cuisine: v.optional(v.string()),
     ambiguityNotes: v.array(v.string()),
+    missingInfo: v.optional(v.array(v.string())),
+    warnings: v.optional(v.array(v.string())),
     needsUserReview: v.boolean(),
     confidence,
 });
@@ -113,6 +127,7 @@ const needsInputReason = v.union(
     v.literal("SOCIAL_SCRAPER_FAILED"),
     v.literal("NOT_RECIPE_LIKE"),
     v.literal("AI_PARSE_FAILED"),
+    v.literal("NO_IMAGE_AVAILABLE"),
 );
 
 const debugExtraction = v.object({
@@ -144,6 +159,14 @@ const importResult = v.object({
     sourceUrl: v.optional(v.string()),
     sourceText: v.optional(v.string()),
     imageUri: v.optional(v.string()),
+    imageStorageId: v.optional(v.id("_storage")),
+    thumbnailStorageId: v.optional(v.id("_storage")),
+    imageUrl: v.optional(v.string()),
+    imageThumbnailUrl: v.optional(v.string()),
+    sourcePlatform: v.optional(sourcePlatform),
+    sourceTitle: v.optional(v.string()),
+    sourceAuthor: v.optional(v.string()),
+    sourceThumbnailUrl: v.optional(v.string()),
     rawContent: v.optional(rawImportContent),
     parsedRecipe: v.optional(parsedRecipe),
     confidence,
@@ -212,10 +235,17 @@ export default defineSchema({
         description: v.optional(v.string()),
 
         sourceType: importSource,
+        sourcePlatform: v.optional(sourcePlatform),
         sourceUrl: v.optional(v.string()),
         sourceText: v.optional(v.string()),
+        sourceTitle: v.optional(v.string()),
+        sourceAuthor: v.optional(v.string()),
+        sourceThumbnailUrl: v.optional(v.string()),
 
         imageUrl: v.optional(v.string()),
+        imageStorageId: v.optional(v.id("_storage")),
+        thumbnailStorageId: v.optional(v.id("_storage")),
+        imageThumbnailUrl: v.optional(v.string()),
 
         servings: v.optional(v.number()),
         prepTimeMinutes: v.optional(v.number()),
@@ -224,6 +254,8 @@ export default defineSchema({
         language: v.optional(language),
         cuisine: v.optional(v.string()),
         ambiguityNotes: v.optional(v.array(v.string())),
+        extractionConfidence: v.optional(confidence),
+        extractionWarnings: v.optional(v.array(v.string())),
         needsUserReview: v.optional(v.boolean()),
         importConfidence: v.optional(confidence),
 
@@ -239,6 +271,7 @@ export default defineSchema({
         ),
 
         steps: v.array(v.string()),
+        tips: v.optional(v.array(v.string())),
 
         notes: v.optional(v.string()),
         tags: v.optional(v.array(v.string())),
@@ -297,6 +330,7 @@ export default defineSchema({
         guestId: v.optional(v.string()),
 
         sourceType: importSource,
+        isImage: v.optional(v.boolean()),
         createdAt: v.number(),
     })
         .index("by_user", ["userId"])

@@ -1,6 +1,8 @@
 import { v } from "convex/values";
+import { z } from "zod";
 
 import { internal } from "./_generated/api";
+import { Id } from "./_generated/dataModel";
 import { action, ActionCtx, internalMutation, internalQuery } from "./_generated/server";
 
 declare const process: {
@@ -14,8 +16,11 @@ type ImportSourceType =
     | "youtube"
     | "whatsapp"
     | "photo"
+    | "text"
     | "manual"
-    | "web";
+    | "web"
+    | "unknown";
+type SourcePlatform = "tiktok" | "instagram" | "manual" | "photo" | "text" | "unknown";
 type ImportMode = "share" | "link" | "photo" | "text" | "manual" | "web";
 type Language = "sq" | "mk" | "en" | "de" | "tr" | "mixed" | "unknown";
 type NeedsInputReason =
@@ -25,7 +30,8 @@ type NeedsInputReason =
     | "SOCIAL_SCRAPER_NOT_CONFIGURED"
     | "SOCIAL_SCRAPER_FAILED"
     | "NOT_RECIPE_LIKE"
-    | "AI_PARSE_FAILED";
+    | "AI_PARSE_FAILED"
+    | "NO_IMAGE_AVAILABLE";
 type DebugExtractionSource =
     | "share_text"
     | "tiktok_oembed"
@@ -53,12 +59,15 @@ type ParsedRecipe = {
         confidence: Confidence;
     }[];
     steps: string[];
+    tips?: string[];
     servings?: number;
     prepTimeMinutes?: number;
     cookTimeMinutes?: number;
     tags: string[];
     cuisine?: string;
     ambiguityNotes: string[];
+    missingInfo?: string[];
+    warnings?: string[];
     needsUserReview: boolean;
     confidence: Confidence;
 };
@@ -76,6 +85,14 @@ type ImportResult = {
     sourceUrl?: string;
     sourceText?: string;
     imageUri?: string;
+    imageStorageId?: Id<"_storage">;
+    thumbnailStorageId?: Id<"_storage">;
+    imageUrl?: string;
+    imageThumbnailUrl?: string;
+    sourcePlatform?: SourcePlatform;
+    sourceTitle?: string;
+    sourceAuthor?: string;
+    sourceThumbnailUrl?: string;
     rawContent?: RawContent;
     parsedRecipe?: ParsedRecipe;
     confidence: Confidence;
@@ -107,6 +124,45 @@ type RawContent = {
     imageText?: string;
 };
 
+const aiIngredientSchema = z.object({
+    text: z.string().trim().optional().nullable(),
+    amount: z.string().trim().optional().nullable(),
+    unit: z.string().trim().optional().nullable(),
+    item: z.string().trim().optional().nullable(),
+    note: z.string().trim().optional().nullable(),
+    notes: z.string().trim().optional().nullable(),
+    name: z.string().trim().optional().nullable(),
+    quantity: z.string().trim().optional().nullable(),
+    confidence: z.enum(["low", "medium", "high"]).optional().default("medium"),
+});
+
+const aiRecipeSchema = z.object({
+    title: z.string().trim().min(1),
+    description: z.string().trim().optional().nullable(),
+    language: z.enum(["sq", "mk", "en", "de", "tr", "mixed", "unknown"]).optional().default("sq"),
+    ingredients: z.array(aiIngredientSchema).default([]),
+    steps: z.array(
+        z.union([
+            z.string(),
+            z.object({
+                order: z.number().optional().nullable(),
+                text: z.string(),
+            }),
+        ]),
+    ).default([]),
+    tips: z.array(z.string()).optional().default([]),
+    servings: z.number().optional().nullable(),
+    prepTimeMinutes: z.number().optional().nullable(),
+    cookTimeMinutes: z.number().optional().nullable(),
+    tags: z.array(z.string()).optional().default([]),
+    cuisine: z.string().trim().optional().nullable(),
+    ambiguityNotes: z.array(z.string()).optional().default([]),
+    missingInfo: z.array(z.string()).optional().default([]),
+    warnings: z.array(z.string()).optional().default([]),
+    needsUserReview: z.boolean().optional().default(true),
+    confidence: z.enum(["low", "medium", "high"]).optional().default("low"),
+});
+
 const confidence = v.union(
     v.literal("low"),
     v.literal("medium"),
@@ -119,8 +175,19 @@ const sourceType = v.union(
     v.literal("youtube"),
     v.literal("whatsapp"),
     v.literal("photo"),
+    v.literal("text"),
     v.literal("manual"),
     v.literal("web"),
+    v.literal("unknown"),
+);
+
+const sourcePlatform = v.union(
+    v.literal("tiktok"),
+    v.literal("instagram"),
+    v.literal("manual"),
+    v.literal("photo"),
+    v.literal("text"),
+    v.literal("unknown"),
 );
 
 const mode = v.union(
@@ -157,12 +224,15 @@ const parsedRecipe = v.object({
     language,
     ingredients: v.array(ingredient),
     steps: v.array(v.string()),
+    tips: v.optional(v.array(v.string())),
     servings: v.optional(v.number()),
     prepTimeMinutes: v.optional(v.number()),
     cookTimeMinutes: v.optional(v.number()),
     tags: v.array(v.string()),
     cuisine: v.optional(v.string()),
     ambiguityNotes: v.array(v.string()),
+    missingInfo: v.optional(v.array(v.string())),
+    warnings: v.optional(v.array(v.string())),
     needsUserReview: v.boolean(),
     confidence,
 });
@@ -189,6 +259,14 @@ const importResult = v.object({
     sourceUrl: v.optional(v.string()),
     sourceText: v.optional(v.string()),
     imageUri: v.optional(v.string()),
+    imageStorageId: v.optional(v.id("_storage")),
+    thumbnailStorageId: v.optional(v.id("_storage")),
+    imageUrl: v.optional(v.string()),
+    imageThumbnailUrl: v.optional(v.string()),
+    sourcePlatform: v.optional(sourcePlatform),
+    sourceTitle: v.optional(v.string()),
+    sourceAuthor: v.optional(v.string()),
+    sourceThumbnailUrl: v.optional(v.string()),
     rawContent: v.optional(rawContent),
     parsedRecipe: v.optional(parsedRecipe),
     confidence,
@@ -202,6 +280,7 @@ const importResult = v.object({
             v.literal("SOCIAL_SCRAPER_FAILED"),
             v.literal("NOT_RECIPE_LIKE"),
             v.literal("AI_PARSE_FAILED"),
+            v.literal("NO_IMAGE_AVAILABLE"),
         ),
     ),
     debugExtraction: v.optional(
@@ -231,11 +310,15 @@ const importResult = v.object({
 
 export const parseDraft = action({
     args: {
+        token: v.optional(v.string()),
+        guestId: v.optional(v.string()),
         sourceType,
         mode: v.optional(mode),
         sourceUrl: v.optional(v.string()),
         sourceText: v.optional(v.string()),
         imageUri: v.optional(v.string()),
+        imageStorageId: v.optional(v.id("_storage")),
+        thumbnailStorageId: v.optional(v.id("_storage")),
         rawContent: v.optional(rawContent),
     },
     handler: async (ctx, args): Promise<ImportResult> => {
@@ -250,6 +333,28 @@ export const parseDraft = action({
             ...args,
             sourceType: resolvedSourceType,
         };
+        const allowance = await ctx.runQuery(internal.importUsage.checkAllowance, {
+            ...(args.token ? { token: args.token } : {}),
+            ...(args.guestId ? { guestId: args.guestId } : {}),
+            sourceType: resolvedSourceType,
+            isImage: Boolean(args.imageStorageId || resolvedSourceType === "photo"),
+        });
+
+        if (!allowance.allowed) {
+            return {
+                sourceType: resolvedSourceType,
+                ...(args.mode ? { mode: args.mode } : {}),
+                ...(args.sourceUrl ? { sourceUrl: args.sourceUrl } : {}),
+                ...(args.sourceText ? { sourceText: args.sourceText } : {}),
+                status: "failed",
+                confidence: "low",
+                warnings: [
+                    allowance.reason === "IMAGE_LIMIT_REACHED"
+                        ? "Ke arritur 2 importet nga foto për këtë javë. Mund të përdorësh ende import nga link ose tekst."
+                        : "Ke arritur 5 importet falas për këtë javë. Zhblloko Pro për importe pa limit.",
+                ],
+            };
+        }
         const sourceHash = args.sourceUrl
             ? `url:v8:${urlContext.normalizedUrl ?? args.sourceUrl}`
             : await hashImportInput(normalizedArgs);
@@ -259,6 +364,13 @@ export const parseDraft = action({
         );
 
         if (cached) {
+            await ctx.runMutation(internal.importUsage.recordImport, {
+                ...(args.token ? { token: args.token } : {}),
+                ...(args.guestId ? { guestId: args.guestId } : {}),
+                sourceType: resolvedSourceType,
+                isImage: Boolean(args.imageStorageId || resolvedSourceType === "photo"),
+            });
+
             return {
                 ...cached,
                 ...(args.sourceUrl ? { sourceUrl: args.sourceUrl } : {}),
@@ -274,6 +386,15 @@ export const parseDraft = action({
                 sourceType: resolvedSourceType,
                 ...(urlContext.normalizedUrl ? { sourceUrl: urlContext.normalizedUrl } : {}),
                 result,
+            });
+        }
+
+        if (result.status === "ready_for_review" || result.parsedRecipe) {
+            await ctx.runMutation(internal.importUsage.recordImport, {
+                ...(args.token ? { token: args.token } : {}),
+                ...(args.guestId ? { guestId: args.guestId } : {}),
+                sourceType: resolvedSourceType,
+                isImage: Boolean(args.imageStorageId || resolvedSourceType === "photo"),
             });
         }
 
@@ -337,15 +458,28 @@ async function parseWithoutCache(ctx: ActionCtx, args: {
     sourceUrl?: string;
     sourceText?: string;
     imageUri?: string;
+    imageStorageId?: Id<"_storage">;
+    thumbnailStorageId?: Id<"_storage">;
     rawContent?: RawContent;
 }, urlContext: ExtractionContext = {}): Promise<ImportResult> {
     const extractionUrl = urlContext.normalizedUrl ?? urlContext.resolvedUrl ?? args.sourceUrl;
+    const storedImage = args.imageStorageId
+        ? await getStoredImageInput(ctx, args.imageStorageId)
+        : null;
+    const storedThumbnailUrl = args.thumbnailStorageId
+        ? await ctx.storage.getUrl(args.thumbnailStorageId)
+        : null;
     const base = {
         sourceType: args.sourceType,
+        sourcePlatform: platformFromSource(args.sourceType, args.mode),
         ...(args.mode ? { mode: args.mode } : {}),
         ...(args.sourceUrl ? { sourceUrl: args.sourceUrl } : {}),
         ...(args.sourceText ? { sourceText: args.sourceText } : {}),
         ...(args.imageUri ? { imageUri: args.imageUri } : {}),
+        ...(args.imageStorageId ? { imageStorageId: args.imageStorageId } : {}),
+        ...(args.thumbnailStorageId ? { thumbnailStorageId: args.thumbnailStorageId } : {}),
+        ...(storedImage?.url ? { imageUrl: storedImage.url } : {}),
+        ...(storedThumbnailUrl ? { imageThumbnailUrl: storedThumbnailUrl } : {}),
     };
 
     const raw: RawContent = compactRawContent(args.rawContent ?? {});
@@ -353,12 +487,12 @@ async function parseWithoutCache(ctx: ActionCtx, args: {
     if (args.sourceType === "photo") {
         const imageText = raw.imageText?.trim();
 
-        if (!imageText) {
+        if (!imageText && !storedImage?.dataUrl) {
             return needsInput({
                 ...base,
                 rawContent: raw,
                 warning:
-                    "Leximi nga foto është gati për t'u lidhur me vision model. Për tani, ngjit tekstin ose caption-in e recetës.",
+                    "Nuk arritëm ta lexojmë mirë recetën. Provo një screenshot më të qartë ose shkruaje recetën vetë.",
                 reason: "NO_CAPTION_TEXT",
                 debugExtraction: makeDebug("none", "", urlContext, "NO_CAPTION_TEXT"),
             });
@@ -367,9 +501,10 @@ async function parseWithoutCache(ctx: ActionCtx, args: {
         return parseTextWithFallback(ctx, {
             ...base,
             rawContent: raw,
-            text: imageText,
+            text: imageText ?? "",
+            imageDataUrl: storedImage?.dataUrl,
             deterministicFirst: true,
-            debugExtraction: makeDebug("share_text", imageText, urlContext),
+            debugExtraction: makeDebug(storedImage?.dataUrl ? "vision" : "share_text", imageText ?? "", urlContext),
         });
     }
 
@@ -378,6 +513,7 @@ async function parseWithoutCache(ctx: ActionCtx, args: {
             ...base,
             rawContent: { ...raw, caption: args.sourceText.trim() },
             text: args.sourceText.trim(),
+            imageDataUrl: storedImage?.dataUrl,
             deterministicFirst: true,
             debugExtraction: makeDebug("share_text", args.sourceText, urlContext),
         });
@@ -391,6 +527,7 @@ async function parseWithoutCache(ctx: ActionCtx, args: {
                 ...base,
                 rawContent: { ...raw, caption: socialText },
                 text: socialText,
+                imageDataUrl: storedImage?.dataUrl,
                 deterministicFirst: true,
                 debugExtraction: makeDebug("share_text", socialText, urlContext),
             });
@@ -422,14 +559,24 @@ async function parseWithoutCache(ctx: ActionCtx, args: {
             });
         }
 
-        return parseTextWithFallback(ctx, {
+        const media = await storeRemoteImageFromUrl(ctx, tiktok.thumbnailUrl);
+        const parsed = await parseTextWithFallback(ctx, {
             ...base,
             rawContent: tiktok.rawContent,
+            sourceTitle: tiktok.rawContent.title,
+            sourceAuthor: tiktok.sourceAuthor,
+            ...(tiktok.thumbnailUrl ? { sourceThumbnailUrl: tiktok.thumbnailUrl } : {}),
+            ...(media?.storageId ? { thumbnailStorageId: media.storageId } : {}),
+            ...(media?.url ? { imageUrl: media.url } : {}),
+            ...(media?.url ? { imageThumbnailUrl: media.url } : {}),
             text: withSourceUrl(tiktok.text, extractionUrl),
+            imageDataUrl: storedImage?.dataUrl,
             deterministicFirst: true,
-            warnings: tiktok.warnings,
+            warnings: [...tiktok.warnings, ...(media?.warning ? [media.warning] : [])],
             debugExtraction: makeDebug("tiktok_oembed", tiktok.text, urlContext),
         });
+
+        return ensureSocialImageOrAsk(parsed);
     }
 
     if (args.sourceUrl && args.sourceType === "instagram" && extractionUrl) {
@@ -463,14 +610,24 @@ async function parseWithoutCache(ctx: ActionCtx, args: {
             });
         }
 
-        return parseTextWithFallback(ctx, {
+        const media = await storeRemoteImageFromUrl(ctx, instagram.thumbnailUrl);
+        const parsed = await parseTextWithFallback(ctx, {
             ...base,
             rawContent: instagram.rawContent,
+            sourceTitle: instagram.rawContent.title,
+            sourceAuthor: instagram.sourceAuthor,
+            ...(instagram.thumbnailUrl ? { sourceThumbnailUrl: instagram.thumbnailUrl } : {}),
+            ...(media?.storageId ? { thumbnailStorageId: media.storageId } : {}),
+            ...(media?.url ? { imageUrl: media.url } : {}),
+            ...(media?.url ? { imageThumbnailUrl: media.url } : {}),
             text: withSourceUrl(instagram.text, extractionUrl),
+            imageDataUrl: storedImage?.dataUrl,
             deterministicFirst: true,
-            warnings: instagram.warnings,
+            warnings: [...instagram.warnings, ...(media?.warning ? [media.warning] : [])],
             debugExtraction: instagram.debugExtraction ?? makeDebug("instagram_meta", instagram.text, urlContext),
         });
+
+        return ensureSocialImageOrAsk(parsed);
     }
 
     if (args.sourceUrl && args.sourceType === "youtube" && extractionUrl) {
@@ -492,6 +649,7 @@ async function parseWithoutCache(ctx: ActionCtx, args: {
             ...base,
             rawContent: youtube.rawContent,
             text: withSourceUrl(text, extractionUrl),
+            imageDataUrl: storedImage?.dataUrl,
             deterministicFirst: true,
             warnings: youtube.warnings,
             debugExtraction: makeDebug("youtube_oembed", text, urlContext),
@@ -535,6 +693,7 @@ async function parseWithoutCache(ctx: ActionCtx, args: {
             ...base,
             rawContent: website.rawContent,
             text: withSourceUrl(text, extractionUrl),
+            imageDataUrl: storedImage?.dataUrl,
             deterministicFirst: true,
             warnings: website.warnings,
             debugExtraction: makeDebug("website_meta", text, urlContext),
@@ -556,13 +715,22 @@ async function parseTextWithFallback(ctx: ActionCtx, args: {
     sourceUrl?: string;
     sourceText?: string;
     imageUri?: string;
+    imageStorageId?: Id<"_storage">;
+    thumbnailStorageId?: Id<"_storage">;
+    imageUrl?: string;
+    imageThumbnailUrl?: string;
+    sourcePlatform?: SourcePlatform;
+    sourceTitle?: string;
+    sourceAuthor?: string;
+    sourceThumbnailUrl?: string;
     rawContent?: RawContent;
     text: string;
+    imageDataUrl?: string;
     deterministicFirst: boolean;
     warnings?: string[];
     debugExtraction?: DebugExtraction;
 }): Promise<ImportResult> {
-    const textHash = `text:v9:${await hashText(normalizeWhitespace(args.text))}`;
+    const textHash = `text:v10:${await hashText(normalizeWhitespace([args.text, args.imageStorageId].filter(Boolean).join("|")))}`;
     const cached: ImportResult | null = await ctx.runQuery(
         internal.imports.getCachedImport,
         { sourceHash: textHash },
@@ -581,7 +749,11 @@ async function parseTextWithFallback(ctx: ActionCtx, args: {
     }
 
     // Always go straight to AI — deterministic parser can't handle Balkan social captions
-    const aiRecipe = await parseWithAi(args.text, args.rawContent?.title);
+    const aiRecipe = await parseRecipeWithAi({
+        text: args.text,
+        imageDataUrl: args.imageDataUrl,
+        fallbackTitle: args.rawContent?.title,
+    });
 
     if (aiRecipe && hasRecipeCore(aiRecipe)) {
         const result: ImportResult = {
@@ -667,6 +839,14 @@ function withoutText(args: {
     sourceUrl?: string;
     sourceText?: string;
     imageUri?: string;
+    imageStorageId?: Id<"_storage">;
+    thumbnailStorageId?: Id<"_storage">;
+    imageUrl?: string;
+    imageThumbnailUrl?: string;
+    sourcePlatform?: SourcePlatform;
+    sourceTitle?: string;
+    sourceAuthor?: string;
+    sourceThumbnailUrl?: string;
 }) {
     return {
         sourceType: args.sourceType,
@@ -674,6 +854,14 @@ function withoutText(args: {
         ...(args.sourceUrl ? { sourceUrl: args.sourceUrl } : {}),
         ...(args.sourceText ? { sourceText: args.sourceText } : {}),
         ...(args.imageUri ? { imageUri: args.imageUri } : {}),
+        ...(args.imageStorageId ? { imageStorageId: args.imageStorageId } : {}),
+        ...(args.thumbnailStorageId ? { thumbnailStorageId: args.thumbnailStorageId } : {}),
+        ...(args.imageUrl ? { imageUrl: args.imageUrl } : {}),
+        ...(args.imageThumbnailUrl ? { imageThumbnailUrl: args.imageThumbnailUrl } : {}),
+        ...(args.sourcePlatform ? { sourcePlatform: args.sourcePlatform } : {}),
+        ...(args.sourceTitle ? { sourceTitle: args.sourceTitle } : {}),
+        ...(args.sourceAuthor ? { sourceAuthor: args.sourceAuthor } : {}),
+        ...(args.sourceThumbnailUrl ? { sourceThumbnailUrl: args.sourceThumbnailUrl } : {}),
     };
 }
 
@@ -729,6 +917,14 @@ function detectSourceTypeFromUrl(
     if (normalized.startsWith("http")) return "web";
 
     return fallback;
+}
+
+function platformFromSource(sourceType: ImportSourceType, mode?: ImportMode): SourcePlatform {
+    if (sourceType === "tiktok" || sourceType === "instagram") return sourceType;
+    if (sourceType === "photo") return "photo";
+    if (sourceType === "manual") return "manual";
+    if (sourceType === "text" || mode === "text") return "text";
+    return "unknown";
 }
 
 function stripTrackingParams(value: string) {
@@ -832,6 +1028,75 @@ async function fetchWithTimeout(
     throw lastError;
 }
 
+async function getStoredImageInput(ctx: ActionCtx, storageId: Id<"_storage">) {
+    const blob = await ctx.storage.get(storageId);
+    const url = await ctx.storage.getUrl(storageId);
+
+    if (!blob) return null;
+
+    const contentType = blob.type || "image/jpeg";
+    if (!contentType.startsWith("image/")) return null;
+
+    const dataUrl = await blobToDataUrl(blob, contentType);
+
+    return {
+        dataUrl,
+        url: url ?? undefined,
+    };
+}
+
+async function storeRemoteImageFromUrl(ctx: ActionCtx, imageUrl?: string) {
+    if (!imageUrl) return null;
+
+    try {
+        const response = await fetchWithTimeout(
+            imageUrl,
+            {
+                headers: realisticHeaders("image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"),
+                redirect: "follow",
+            },
+            6500,
+            1,
+        );
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const blob = await response.blob();
+        const contentType =
+            blob.type ||
+            response.headers.get("content-type")?.split(";")[0] ||
+            "image/jpeg";
+
+        if (!contentType.startsWith("image/")) {
+            throw new Error("Not an image");
+        }
+
+        const storageId = await ctx.storage.store(blob);
+        const url = await ctx.storage.getUrl(storageId);
+
+        return {
+            storageId,
+            url: url ?? undefined,
+        };
+    } catch {
+        return {
+            warning: "Nuk arritëm ta marrim foton nga ky link.",
+        };
+    }
+}
+
+async function blobToDataUrl(blob: Blob, contentType: string) {
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let binary = "";
+    const chunkSize = 0x8000;
+
+    for (let index = 0; index < bytes.length; index += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+    }
+
+    return `data:${contentType};base64,${btoa(binary)}`;
+}
+
 async function extractWebsiteContent(sourceUrl: string, raw: RawContent) {
     const warnings: string[] = [];
 
@@ -884,6 +1149,8 @@ async function extractTikTokContent(
         title?: string;
         description?: string;
         htmlText?: string;
+        thumbnailUrl?: string;
+        sourceAuthor?: string;
     }[] = [];
     let blocked = false;
 
@@ -927,6 +1194,8 @@ async function extractTikTokContent(
                 title: cleanTikTokText(data.title ?? "", data.author_name),
                 description: data.author_name ? `TikTok nga ${data.author_name}` : undefined,
                 htmlText,
+                thumbnailUrl: data.thumbnail_url,
+                sourceAuthor: data.author_name,
             });
 
             if (hasUsefulRecipeText(text)) break;
@@ -966,6 +1235,7 @@ async function extractTikTokContent(
                 title: extracted.title,
                 description: extracted.description,
                 htmlText: extracted.visibleText,
+                thumbnailUrl: extracted.thumbnailUrl,
             });
         }
     } catch {
@@ -1032,6 +1302,8 @@ async function extractTikTokContent(
             htmlText: best?.htmlText ?? raw.htmlText,
         }),
         text,
+        thumbnailUrl: best?.thumbnailUrl,
+        sourceAuthor: best?.sourceAuthor,
         warnings,
         blocked: blocked && !text,
         debugExtraction: makeDebug(best?.source ?? "tiktok_oembed", text, context),
@@ -1104,6 +1376,8 @@ async function extractInstagramContent(
         text: "",
         title: raw.title,
         description: raw.description,
+        thumbnailUrl: undefined as string | undefined,
+        sourceAuthor: undefined as string | undefined,
     };
 
     for (const document of htmlDocuments) {
@@ -1123,6 +1397,8 @@ async function extractInstagramContent(
                 text,
                 title: extracted.title ?? best.title,
                 description: extracted.description ?? best.description,
+                thumbnailUrl: extracted.thumbnailUrl ?? best.thumbnailUrl,
+                sourceAuthor: extracted.sourceAuthor ?? best.sourceAuthor,
             };
         }
     }
@@ -1138,6 +1414,8 @@ async function extractInstagramContent(
             caption: textIsGeneric ? undefined : best.text,
         }),
         text: textIsGeneric ? "" : best.text,
+        thumbnailUrl: best.thumbnailUrl,
+        sourceAuthor: best.sourceAuthor,
         warnings,
         blocked: blocked && !best.text,
         debugExtraction: makeDebug(best.source, best.text, context),
@@ -1178,6 +1456,12 @@ function extractInstagramTextFromHtml(html: string) {
     const quotedDescription = extractInstagramCaptionFromDescription(description);
     const jsonText = extractInstagramJsonCaption(html);
     const visibleText = extractInstagramVisibleText(html);
+    const thumbnailUrl =
+        extractMetaContent(html, "og:image") ??
+        extractMetaContent(html, "twitter:image");
+    const sourceAuthor =
+        extractMetaContent(html, "instapp:owner_user_id") ??
+        title?.match(/^([^(@|]+)(?:\(| on Instagram| •)/i)?.[1]?.trim();
 
     return {
         title,
@@ -1186,6 +1470,8 @@ function extractInstagramTextFromHtml(html: string) {
         caption: quotedDescription ?? jsonText,
         jsonText,
         visibleText,
+        thumbnailUrl,
+        sourceAuthor,
     };
 }
 
@@ -1198,6 +1484,9 @@ function extractTikTokTextFromHtml(html: string) {
     const caption = extractTikTokCaptionFromDescription(description);
     const jsonText = extractTikTokJsonCaption(html);
     const visibleText = extractTikTokVisibleText(html);
+    const thumbnailUrl =
+        extractMetaContent(html, "og:image") ??
+        extractMetaContent(html, "twitter:image");
 
     return {
         title: title ? cleanTikTokText(title) : undefined,
@@ -1205,6 +1494,7 @@ function extractTikTokTextFromHtml(html: string) {
         caption,
         jsonText,
         visibleText,
+        thumbnailUrl,
     };
 }
 
@@ -1883,17 +2173,18 @@ function parseStructuredRecipeText(
     });
 }
 
-async function parseWithAi(
-    text: string,
-    fallbackTitle?: string,
-): Promise<ParsedRecipe | null> {
-    const api = getAiConfig();
+async function parseRecipeWithAi(args: {
+    text: string;
+    imageDataUrl?: string;
+    fallbackTitle?: string;
+}): Promise<ParsedRecipe | null> {
+    const api = getAiConfigForProvider({ requiresVision: Boolean(args.imageDataUrl) });
     if (!api) return null;
 
     const prompt = [
         "You are a recipe extraction expert for Receta Ime, an Albanian recipe saving app.",
         "",
-        "TASK: Extract ONE clean recipe from the text below and return it fully in Albanian.",
+        "TASK: Extract ONE clean recipe from the provided text and/or image and return it fully in Albanian.",
         "",
         "CRITICAL LANGUAGE RULE:",
         "1. ALWAYS translate all user-facing recipe content to Albanian.",
@@ -1950,23 +2241,36 @@ async function parseWithAi(
         "Set confidence high if full ingredients and steps are found.",
         "Set confidence medium if usable but some details are unclear.",
         "Set confidence low if incomplete.",
+        "If the image is not a recipe, set confidence low and explain why in warnings.",
         "If something is vague, set needsUserReview:true and add an ambiguity note in Albanian.",
+        "Do not invent missing ingredients, timing, or servings. If timing/servings are missing, return null or omit them.",
         "",
         "OUTPUT:",
         "Strict JSON only. No markdown. No explanation.",
         "",
         "Return exactly this TypeScript-compatible shape:",
-        '{"title":"string","description":"string","language":"sq","ingredients":[{"text":"string","amount":"string optional","unit":"string optional","item":"string optional","note":"string optional","confidence":"low|medium|high"}],"steps":["string"],"servings":number optional,"prepTimeMinutes":number optional,"cookTimeMinutes":number optional,"tags":["string"],"cuisine":"string optional","ambiguityNotes":["string"],"needsUserReview":boolean,"confidence":"low|medium|high"}',
+        '{"title":"string","description":"string","language":"sq","ingredients":[{"text":"string","name":"string optional","quantity":"string optional","unit":"string optional","notes":"string optional","confidence":"low|medium|high"}],"steps":[{"order":number,"text":"string"}],"tips":["string"],"servings":number|null,"prepTimeMinutes":number|null,"cookTimeMinutes":number|null,"tags":["string"],"cuisine":"string optional","missingInfo":["string"],"warnings":["string"],"ambiguityNotes":["string"],"needsUserReview":boolean,"confidence":"low|medium|high"}',
         "",
-        fallbackTitle
-            ? `Fallback title, translate to Albanian if useful: ${fallbackTitle}`
+        args.fallbackTitle
+            ? `Fallback title, translate to Albanian if useful: ${args.fallbackTitle}`
             : "",
         "",
-        "SOURCE TEXT:",
-        text.slice(0, 12000),
+        args.text.trim() ? "SOURCE TEXT:" : "SOURCE TEXT: none",
+        args.text.slice(0, 12000),
     ]
         .filter(Boolean)
         .join("\n");
+    const content: (
+        | { type: "text"; text: string }
+        | { type: "image_url"; image_url: { url: string } }
+    )[] = [{ type: "text", text: prompt }];
+
+    if (args.imageDataUrl) {
+        content.push({
+            type: "image_url",
+            image_url: { url: args.imageDataUrl },
+        });
+    }
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
@@ -1986,7 +2290,7 @@ async function parseWithAi(
                             content:
                                 "You are Receta Ime's recipe parser. Extract recipes from any language and return one clean recipe fully translated into natural Albanian as valid JSON only. Output only the JSON object.",
                         },
-                        { role: "user", content: prompt },
+                        { role: "user", content },
                     ],
                 }),
             });
@@ -1997,9 +2301,9 @@ async function parseWithAi(
                 choices?: { message?: { content?: string } }[];
             };
 
-            const content = payload.choices?.[0]?.message?.content;
-            const recipe = content
-                ? sanitizeParsedRecipe(JSON.parse(stripJson(content)))
+            const aiContent = payload.choices?.[0]?.message?.content;
+            const recipe = aiContent
+                ? sanitizeParsedRecipe(JSON.parse(stripJson(aiContent)))
                 : null;
 
             if (recipe) {
@@ -2024,6 +2328,23 @@ async function parseWithAi(
 }
 
 function getAiConfig() {
+    return getAiConfigForProvider({});
+}
+
+function getAiConfigForProvider(options: { requiresVision?: boolean }) {
+    if (options.requiresVision) {
+        const openAiKey = process.env.OPENAI_API_KEY;
+        if (openAiKey) {
+            return {
+                apiKey: openAiKey,
+                baseUrl: "https://api.openai.com/v1",
+                model: process.env.OPENAI_MODEL ?? "gpt-4.1-mini",
+            };
+        }
+
+        return null;
+    }
+
     const deepSeekKey = process.env.DEEPSEEK_API_KEY;
     if (deepSeekKey) {
         return {
@@ -2048,33 +2369,45 @@ function getAiConfig() {
 function sanitizeParsedRecipe(value: unknown): ParsedRecipe | null {
     if (!isRecord(value)) return null;
 
-    const title = textFromUnknown(value.title);
+    const validated = aiRecipeSchema.safeParse(value);
+    const normalizedValue = validated.success ? validated.data : value;
+    const title = textFromUnknown(normalizedValue.title);
     if (!title) return null;
 
-    const ingredients = arrayFromUnknown(value.ingredients)
+    const ingredients = arrayFromUnknown(normalizedValue.ingredients)
         .map((item) => {
             if (typeof item === "string") {
                 return { text: item, confidence: "low" as const };
             }
             if (!isRecord(item)) return null;
-            const text = textFromUnknown(item.text);
+            const name = textFromUnknown(item.name) ?? textFromUnknown(item.item);
+            const quantity = textFromUnknown(item.quantity) ?? textFromUnknown(item.amount);
+            const unit = textFromUnknown(item.unit);
+            const text =
+                textFromUnknown(item.text) ??
+                [quantity, unit, name].filter(Boolean).join(" ").trim();
             if (!text) return null;
             return {
                 text,
-                ...(textFromUnknown(item.amount)
-                    ? { amount: textFromUnknown(item.amount) }
+                ...(quantity
+                    ? { amount: quantity }
                     : {}),
-                ...(textFromUnknown(item.unit) ? { unit: textFromUnknown(item.unit) } : {}),
-                ...(textFromUnknown(item.item) ? { item: textFromUnknown(item.item) } : {}),
-                ...(textFromUnknown(item.note) ? { note: textFromUnknown(item.note) } : {}),
+                ...(unit ? { unit } : {}),
+                ...(name ? { item: name } : {}),
+                ...(textFromUnknown(item.note) ?? textFromUnknown(item.notes)
+                    ? { note: textFromUnknown(item.note) ?? textFromUnknown(item.notes) }
+                    : {}),
                 confidence: normalizeConfidence(item.confidence),
             };
         })
         .filter((item): item is ParsedRecipe["ingredients"][number] => item !== null)
         .slice(0, 80);
 
-    const steps = arrayFromUnknown(value.steps)
-        .map(textFromUnknown)
+    const steps = arrayFromUnknown(normalizedValue.steps)
+        .map((step) => {
+            if (isRecord(step)) return textFromUnknown(step.text);
+            return textFromUnknown(step);
+        })
         .filter(isNonEmptyString)
         // Filter out steps that look like ingredients or are too short to be real steps
         .filter((step) => step.length > 10 && !isLikelyIngredientLine(step))
@@ -2082,34 +2415,50 @@ function sanitizeParsedRecipe(value: unknown): ParsedRecipe | null {
 
     return compactParsedRecipe({
         title,
-        ...(textFromUnknown(value.description)
-            ? { description: textFromUnknown(value.description) }
+        ...(textFromUnknown(normalizedValue.description)
+            ? { description: textFromUnknown(normalizedValue.description) }
             : {}),
-        language: normalizeLanguage(value.language),
+        language: normalizeLanguage(normalizedValue.language),
         ingredients,
         steps,
-        ...(numberFromUnknown(value.servings)
-            ? { servings: numberFromUnknown(value.servings) }
+        ...(numberFromUnknown(normalizedValue.servings)
+            ? { servings: numberFromUnknown(normalizedValue.servings) }
             : {}),
-        ...(numberFromUnknown(value.prepTimeMinutes)
-            ? { prepTimeMinutes: numberFromUnknown(value.prepTimeMinutes) }
+        ...(numberFromUnknown(normalizedValue.prepTimeMinutes)
+            ? { prepTimeMinutes: numberFromUnknown(normalizedValue.prepTimeMinutes) }
             : {}),
-        ...(numberFromUnknown(value.cookTimeMinutes)
-            ? { cookTimeMinutes: numberFromUnknown(value.cookTimeMinutes) }
+        ...(numberFromUnknown(normalizedValue.cookTimeMinutes)
+            ? { cookTimeMinutes: numberFromUnknown(normalizedValue.cookTimeMinutes) }
             : {}),
-        tags: arrayFromUnknown(value.tags)
+        tags: arrayFromUnknown(normalizedValue.tags)
             .map(textFromUnknown)
             .filter(isNonEmptyString)
             .slice(0, 12),
-        ...(textFromUnknown(value.cuisine)
-            ? { cuisine: textFromUnknown(value.cuisine) }
+        ...(textFromUnknown(normalizedValue.cuisine)
+            ? { cuisine: textFromUnknown(normalizedValue.cuisine) }
             : {}),
-        ambiguityNotes: arrayFromUnknown(value.ambiguityNotes)
+        ambiguityNotes: [
+            ...arrayFromUnknown(normalizedValue.ambiguityNotes),
+            ...arrayFromUnknown(normalizedValue.missingInfo),
+            ...arrayFromUnknown(normalizedValue.warnings),
+        ]
             .map(textFromUnknown)
             .filter(isNonEmptyString)
             .slice(0, 12),
-        needsUserReview: Boolean(value.needsUserReview),
-        confidence: normalizeConfidence(value.confidence),
+        missingInfo: arrayFromUnknown(normalizedValue.missingInfo)
+            .map(textFromUnknown)
+            .filter(isNonEmptyString)
+            .slice(0, 12),
+        warnings: arrayFromUnknown(normalizedValue.warnings)
+            .map(textFromUnknown)
+            .filter(isNonEmptyString)
+            .slice(0, 12),
+        tips: arrayFromUnknown(normalizedValue.tips)
+            .map(textFromUnknown)
+            .filter(isNonEmptyString)
+            .slice(0, 12),
+        needsUserReview: Boolean(normalizedValue.needsUserReview),
+        confidence: normalizeConfidence(normalizedValue.confidence),
     });
 }
 
@@ -2137,6 +2486,9 @@ function compactParsedRecipe(recipe: ParsedRecipe): ParsedRecipe {
             }))
             .filter((item) => item.text.length > 0),
         steps: recipe.steps.map((step) => step.trim()).filter(Boolean),
+        ...(recipe.tips?.length
+            ? { tips: recipe.tips.map((tip) => tip.trim()).filter(Boolean).slice(0, 12) }
+            : {}),
         ...(recipe.servings ? { servings: recipe.servings } : {}),
         ...(recipe.prepTimeMinutes ? { prepTimeMinutes: recipe.prepTimeMinutes } : {}),
         ...(recipe.cookTimeMinutes ? { cookTimeMinutes: recipe.cookTimeMinutes } : {}),
@@ -2146,6 +2498,22 @@ function compactParsedRecipe(recipe: ParsedRecipe): ParsedRecipe {
             .map((note) => note.trim())
             .filter(Boolean)
             .slice(0, 12),
+        ...(recipe.missingInfo?.length
+            ? {
+                missingInfo: recipe.missingInfo
+                    .map((note) => note.trim())
+                    .filter(Boolean)
+                    .slice(0, 12),
+            }
+            : {}),
+        ...(recipe.warnings?.length
+            ? {
+                warnings: recipe.warnings
+                    .map((note) => note.trim())
+                    .filter(Boolean)
+                    .slice(0, 12),
+            }
+            : {}),
         needsUserReview: recipe.needsUserReview,
         confidence: recipe.confidence,
     };
@@ -2157,6 +2525,14 @@ function needsInput(args: {
     sourceUrl?: string;
     sourceText?: string;
     imageUri?: string;
+    imageStorageId?: Id<"_storage">;
+    thumbnailStorageId?: Id<"_storage">;
+    imageUrl?: string;
+    imageThumbnailUrl?: string;
+    sourcePlatform?: SourcePlatform;
+    sourceTitle?: string;
+    sourceAuthor?: string;
+    sourceThumbnailUrl?: string;
     rawContent?: RawContent;
     parsedRecipe?: ParsedRecipe;
     warning: string;
@@ -2170,6 +2546,14 @@ function needsInput(args: {
         ...(args.sourceUrl ? { sourceUrl: args.sourceUrl } : {}),
         ...(args.sourceText ? { sourceText: args.sourceText } : {}),
         ...(args.imageUri ? { imageUri: args.imageUri } : {}),
+        ...(args.imageStorageId ? { imageStorageId: args.imageStorageId } : {}),
+        ...(args.thumbnailStorageId ? { thumbnailStorageId: args.thumbnailStorageId } : {}),
+        ...(args.imageUrl ? { imageUrl: args.imageUrl } : {}),
+        ...(args.imageThumbnailUrl ? { imageThumbnailUrl: args.imageThumbnailUrl } : {}),
+        ...(args.sourcePlatform ? { sourcePlatform: args.sourcePlatform } : {}),
+        ...(args.sourceTitle ? { sourceTitle: args.sourceTitle } : {}),
+        ...(args.sourceAuthor ? { sourceAuthor: args.sourceAuthor } : {}),
+        ...(args.sourceThumbnailUrl ? { sourceThumbnailUrl: args.sourceThumbnailUrl } : {}),
         ...(args.rawContent ? { rawContent: compactRawContent(args.rawContent) } : {}),
         ...(args.parsedRecipe ? { parsedRecipe: args.parsedRecipe } : {}),
         status: "needs_input",
@@ -2177,6 +2561,31 @@ function needsInput(args: {
         warnings: [...(args.warnings ?? []), args.warning],
         needsInputReason: args.reason,
         ...(args.debugExtraction ? { debugExtraction: args.debugExtraction } : {}),
+    };
+}
+
+function ensureSocialImageOrAsk(result: ImportResult): ImportResult {
+    if (
+        result.status !== "ready_for_review" ||
+        result.imageStorageId ||
+        result.thumbnailStorageId ||
+        result.imageUrl ||
+        result.imageThumbnailUrl ||
+        (result.sourceType !== "tiktok" && result.sourceType !== "instagram")
+    ) {
+        return result;
+    }
+
+    return {
+        ...result,
+        warnings: [
+            ...result.warnings,
+            "Nuk arritëm ta marrim foton nga ky link.",
+        ],
+        debugExtraction: {
+            ...(result.debugExtraction ?? makeDebug("none", result.sourceText ?? "")),
+            reason: "NO_IMAGE_AVAILABLE",
+        },
     };
 }
 
