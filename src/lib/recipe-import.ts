@@ -61,6 +61,9 @@ export function normalizeImportDraft(args: {
   metaDescription?: string;
   metaCaption?: string;
   metaHtmlText?: string;
+  imageUrl?: string;
+  imageThumbnailUrl?: string;
+  sourceThumbnailUrl?: string;
   status?: ImportDraft["status"];
 }): ImportDraft {
   const value = args.value?.trim();
@@ -81,6 +84,13 @@ export function normalizeImportDraft(args: {
     ...(sourceUrl ? { sourceUrl } : {}),
     ...(sourceText ? { sourceText } : {}),
     ...(args.imageUri ? { imageUri: args.imageUri } : {}),
+    ...(args.imageUrl ? { imageUrl: args.imageUrl } : {}),
+    ...(args.imageThumbnailUrl
+      ? { imageThumbnailUrl: args.imageThumbnailUrl }
+      : {}),
+    ...(args.sourceThumbnailUrl
+      ? { sourceThumbnailUrl: args.sourceThumbnailUrl }
+      : {}),
     ...(args.metaTitle
       ? {
           rawContent: {

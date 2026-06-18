@@ -1,11 +1,12 @@
 import { IconChevronLeft } from "@tabler/icons-react-native";
 import * as Haptics from "expo-haptics";
 import { Stack, useRouter } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { CreateAccountStep } from "@/components/onboarding/steps/create-account-step";
-import { Radius, Spacing } from "@/constants/theme";
+import { ThemedIconButton } from "@/components/ui/themed-icon-button";
+import { Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 
 export default function OnboardingCreateAccountScreen() {
@@ -23,10 +24,6 @@ export default function OnboardingCreateAccountScreen() {
     router.replace("/(tabs)/profile" as any);
   };
 
-  const t = theme as any;
-  const surface = t.surface ?? "#F7F6F2";
-  const borderLight = t.borderLight ?? theme.border;
-
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
@@ -36,26 +33,19 @@ export default function OnboardingCreateAccountScreen() {
         style={[styles.safeArea, { backgroundColor: theme.background }]}
       >
         <View style={styles.header}>
-          <Pressable
+          <ThemedIconButton
             onPress={goBack}
-            hitSlop={14}
-            accessibilityRole="button"
-            accessibilityLabel="Kthehu mbrapa"
-            style={({ pressed }) => [
-              styles.backButton,
-              {
-                backgroundColor: surface,
-                borderColor: borderLight,
-                opacity: pressed ? 0.68 : 1,
-              },
-            ]}
-          >
-            <IconChevronLeft
-              size={23}
-              color={theme.textPrimary}
-              strokeWidth={2.8}
-            />
-          </Pressable>
+            size={38}
+            radius="md"
+            variant="paper"
+            icon={
+              <IconChevronLeft
+                size={22}
+                color={theme.textSecondary}
+                strokeWidth={2.6}
+              />
+            }
+          />
         </View>
 
         <ScrollView
@@ -76,23 +66,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    height: 58,
+    height: 54,
     paddingHorizontal: Spacing.xl,
     alignItems: "flex-start",
-    justifyContent: "center",
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: "center",
     justifyContent: "center",
   },
   content: {
     flexGrow: 1,
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.md,
+    paddingTop: Spacing.sm,
     paddingBottom: Spacing.xxl,
   },
 });

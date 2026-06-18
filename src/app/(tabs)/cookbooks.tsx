@@ -6,6 +6,7 @@ import {
   IconFolder,
   IconFolders,
   IconPlus,
+  IconSparkles,
   IconStarFilled,
 } from "@tabler/icons-react-native";
 import { useMutation, useQuery } from "convex/react";
@@ -27,13 +28,14 @@ import {
   type ImportUsageSheetRef,
   type ImportUsageSummary,
 } from "@/components/sheets/import-usage-sheet";
-import { EmptyTabState } from "@/components/tabs/empty-tab-state";
 import { TabScreen } from "@/components/tabs/tab-screen";
 import { TabScreenHeader } from "@/components/tabs/tab-screen-header";
 import { ThemedText } from "@/components/ui/themed-text";
 import { Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
+import { normalizeImportDraft } from "@/lib/recipe-import";
 import { useAuth } from "@/providers/auth-provider";
+import { useImportDraftStore } from "@/stores/import-draft-store";
 import { useGuestStore, type GuestRecipe } from "@/stores/guest-store";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -86,6 +88,25 @@ const COLLECTION_COLORS = [
   "#F27C38",
 ];
 
+const DEMO_RECIPE_TEXT = `Flija tradicionale
+
+Përbërësit:
+1 kg miell
+1.2 l ujë të vakët
+1 lugë çaji kripë
+250 g kajmak ose gjalpë i shkrirë
+2 lugë vaj
+
+Hapat:
+1. Përzieje miellin me kripën dhe ujin derisa të bëhet një brumë i hollë si për petulla.
+2. Lyeje tepsinë me pak gjalpë dhe hidh një shtresë të hollë brumi.
+3. Piqe shtresën derisa të marrë ngjyrë, pastaj lyeje me kajmak.
+4. Vazhdo me shtresa të tjera brumi dhe kajmaku derisa të mbarojë masa.
+5. Piqe edhe disa minuta në fund dhe shërbeje të ngrohtë.`;
+
+const DEMO_FLIJA_IMAGE_URL =
+  "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Flija.png/220px-Flija.png";
+
 export default function CookbooksIndexScreen() {
   const router = useRouter();
   const theme = useTheme();
@@ -95,6 +116,7 @@ export default function CookbooksIndexScreen() {
   const { token, isAuthenticated } = useAuth();
   const guestRecipes = useGuestStore((state) => state.recipes);
   const guestId = useGuestStore((state) => state.guestId);
+  const setImportDraft = useImportDraftStore((state) => state.setDraft);
 
   const [viewMode, setViewMode] = useState<ViewMode>("recipes");
   const [filter, setFilter] = useState<LibraryFilter>({ type: "all" });
@@ -116,9 +138,10 @@ export default function CookbooksIndexScreen() {
 
   const createCollection = useMutation(api.collections.create);
 
-  const recipes = (
-    isAuthenticated ? (accountRecipes ?? []) : guestRecipes
-  ) as RecipeLike[];
+  const recipes = useMemo(
+    () => (isAuthenticated ? (accountRecipes ?? []) : guestRecipes) as RecipeLike[],
+    [accountRecipes, guestRecipes, isAuthenticated],
+  );
 
   const collections = useMemo(() => {
     if (isAuthenticated) return accountCollections ?? [];
@@ -179,6 +202,21 @@ export default function CookbooksIndexScreen() {
       pathname: "/import-recipe",
       params: { mode: "link" },
     } as any);
+  };
+
+  const openDemoImport = () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setImportDraft(
+      normalizeImportDraft({
+        mode: "text",
+        value: DEMO_RECIPE_TEXT,
+        status: "receiving",
+        imageUrl: DEMO_FLIJA_IMAGE_URL,
+        imageThumbnailUrl: DEMO_FLIJA_IMAGE_URL,
+        sourceThumbnailUrl: DEMO_FLIJA_IMAGE_URL,
+      }),
+    );
+    router.push("/import-recipe" as any);
   };
 
   const openRecipe = (recipe: RecipeLike) => {
@@ -331,17 +369,35 @@ export default function CookbooksIndexScreen() {
             </View>
           ) : recipes.length === 0 ? (
             <View style={styles.emptyWrap}>
-              <EmptyTabState
-                icon={
-                  <IconChefHat
-                    size={42}
+              <View style={styles.emptyHero}>
+                <View
+                  style={[
+                    styles.emptyIcon,
+                    {
+                      backgroundColor: theme.primarySoft,
+                      borderColor: theme.borderLight,
+                    },
+                  ]}
+                >
+                  <IconSparkles
+                    size={34}
                     color={theme.primary}
-                    strokeWidth={2.1}
+                    strokeWidth={2.4}
                   />
-                }
-                title="Asnjë recetë ende"
-                subtitle="Shto recetën e parë nga link, foto, screenshot ose tekst."
-              />
+                </View>
+
+                <ThemedText style={styles.emptyTitle}>
+                  Ktheje çdo link në recetë të pastër
+                </ThemedText>
+
+                <ThemedText
+                  color="secondary"
+                  align="center"
+                  style={styles.emptySubtitle}
+                >
+                  Ngjit një link nga Instagram, TikTok, web ose shto screenshot.
+                </ThemedText>
+              </View>
 
               <Pressable
                 onPress={openImport}
@@ -358,6 +414,33 @@ export default function CookbooksIndexScreen() {
                 <ThemedText style={styles.primaryActionText}>
                   Shto recetë
                 </ThemedText>
+              </Pressable>
+
+              <Pressable
+                onPress={openDemoImport}
+                style={({ pressed }) => [
+                  styles.demoAction,
+                  {
+                    backgroundColor: theme.surface,
+                    borderColor: theme.borderLight,
+                    opacity: pressed ? 0.74 : 1,
+                  },
+                ]}
+              >
+                <IconChefHat
+                  size={21}
+                  color={theme.primary}
+                  strokeWidth={2.4}
+                />
+
+                <View style={styles.demoCopy}>
+                  <ThemedText style={styles.demoTitle}>
+                    Provo me Flija klasike
+                  </ThemedText>
+                  <ThemedText color="secondary" style={styles.demoSubtitle}>
+                    Shiko si formohet karta në pak sekonda.
+                  </ThemedText>
+                </View>
               </Pressable>
             </View>
           ) : viewMode === "collections" ? (
@@ -722,6 +805,34 @@ const styles = StyleSheet.create({
   emptyWrap: {
     paddingTop: Spacing.xl,
   },
+  emptyHero: {
+    alignItems: "center",
+    gap: Spacing.md,
+    paddingTop: Spacing.lg,
+    paddingHorizontal: Spacing.md,
+  },
+  emptyIcon: {
+    width: 78,
+    height: 78,
+    borderRadius: Radius.xxl,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyTitle: {
+    maxWidth: 330,
+    fontSize: 28,
+    lineHeight: 34,
+    fontWeight: "900",
+    textAlign: "center",
+    letterSpacing: -0.25,
+  },
+  emptySubtitle: {
+    maxWidth: 310,
+    fontSize: 16,
+    lineHeight: 23,
+    fontWeight: "700",
+  },
   primaryAction: {
     marginTop: Spacing.xl,
     minHeight: 58,
@@ -736,6 +847,31 @@ const styles = StyleSheet.create({
     fontSize: 17,
     lineHeight: 23,
     fontWeight: "900",
+  },
+  demoAction: {
+    marginTop: Spacing.md,
+    minHeight: 72,
+    borderRadius: Radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: Spacing.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.md,
+  },
+  demoCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  demoTitle: {
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: "900",
+  },
+  demoSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
   },
   recipeGrid: {
     flexDirection: "row",

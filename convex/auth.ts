@@ -270,6 +270,68 @@ export const completeOnboarding = mutation({
     },
 });
 
+export const updateNotificationSettings = mutation({
+    args: {
+        token: v.string(),
+        expoPushToken: v.optional(v.string()),
+        notificationsEnabled: v.boolean(),
+        permissionStatus: v.optional(v.string()),
+    },
+    handler: async (ctx, args) => {
+        const user = await getUserFromToken(ctx, args.token);
+
+        if (!user) {
+            throw new Error("Not authenticated");
+        }
+
+        await ctx.db.patch(user._id, {
+            ...(args.expoPushToken ? { expoPushToken: args.expoPushToken } : {}),
+            notificationsEnabled: args.notificationsEnabled,
+            updatedAt: Date.now(),
+        });
+
+        return true;
+    },
+});
+
+export const syncSubscriptionFromRevenueCat = mutation({
+    args: {
+        token: v.string(),
+        revenueCatUserId: v.string(),
+        hasActiveSubscription: v.boolean(),
+        subscriptionStatus: v.union(
+            v.literal("inactive"),
+            v.literal("trial"),
+            v.literal("active"),
+            v.literal("expired"),
+        ),
+        productIdentifier: v.optional(v.string()),
+        subscriptionExpiresAt: v.optional(v.number()),
+    },
+    handler: async (ctx, args) => {
+        const user = await getUserFromToken(ctx, args.token);
+
+        if (!user) {
+            throw new Error("Not authenticated");
+        }
+
+        await ctx.db.patch(user._id, {
+            revenueCatUserId: args.revenueCatUserId,
+            hasActiveSubscription: args.hasActiveSubscription,
+            subscriptionStatus: args.subscriptionStatus,
+            ...(args.productIdentifier
+                ? { productIdentifier: args.productIdentifier }
+                : {}),
+            ...(typeof args.subscriptionExpiresAt === "number"
+                ? { subscriptionExpiresAt: args.subscriptionExpiresAt }
+                : {}),
+            updatedAt: Date.now(),
+        });
+
+        return true;
+    },
+});
+
 export const signOut = mutation({
     args: {
         token: v.string(),

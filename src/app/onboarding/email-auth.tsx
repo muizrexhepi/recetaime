@@ -1,7 +1,12 @@
 import { IconChevronLeft } from "@tabler/icons-react-native";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { EmailAuthStep } from "@/components/onboarding/steps/email-auth-step";
@@ -71,5 +76,6 @@ const styles = StyleSheet.create({
   },
   content: {
     flexGrow: 1,
+    paddingTop: Spacing.sm,
   },
 });

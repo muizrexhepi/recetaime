@@ -38,6 +38,10 @@ import { ThemedView } from "@/components/ui/themed-view";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import {
+  registerForPushNotificationsAsync,
+  scheduleRecipePrepReminderAsync,
+} from "@/lib/notifications";
+import {
   buildRecipeFromParsed,
   detectSourceType,
   getDraftInputValue,
@@ -282,8 +286,20 @@ export default function ImportRecipeScreen() {
   const parseImport = useAction(api.imports.parseDraft);
   const createRecipe = useMutation(api.recipes.createFromImport);
   const generateImageUploadUrl = useMutation(api.recipes.generateImageUploadUrl);
+  const updateNotificationSettings = useMutation(
+    api.auth.updateNotificationSettings,
+  );
   const addGuestRecipe = useGuestStore((state) => state.addRecipe);
   const guestId = useGuestStore((state) => state.guestId);
+  const setNotificationPreference = useGuestStore(
+    (state) => state.setNotificationPreference,
+  );
+  const notificationsEnabled = useGuestStore(
+    (state) => state.notificationsEnabled,
+  );
+  const notificationPermissionStatus = useGuestStore(
+    (state) => state.notificationPermissionStatus,
+  );
 
   const storeDraft = useImportDraftStore((state) => state.draft);
   const setStoreDraft = useImportDraftStore((state) => state.setDraft);
@@ -340,6 +356,11 @@ export default function ImportRecipeScreen() {
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedRecipe, setSavedRecipe] = useState<SavedRecipeTarget | null>(
+    null,
+  );
+  const [showNotificationPrompt, setShowNotificationPrompt] = useState(false);
+  const [notificationLoading, setNotificationLoading] = useState(false);
+  const [notificationMessage, setNotificationMessage] = useState<string | null>(
     null,
   );
   const [showSupplementalInput, setShowSupplementalInput] = useState(false);
@@ -844,6 +865,11 @@ export default function ImportRecipeScreen() {
       }
 
       clearDraft();
+      setShowNotificationPrompt(
+        !notificationsEnabled &&
+          notificationPermissionStatus !== "granted" &&
+          notificationPermissionStatus !== "denied",
+      );
     } catch (error) {
       setMessage(
         error instanceof Error
@@ -853,6 +879,67 @@ export default function ImportRecipeScreen() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const enableNotificationsAfterSave = async () => {
+    if (!savedRecipe || notificationLoading) return;
+
+    setNotificationLoading(true);
+    setNotificationMessage(null);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    try {
+      const result = await registerForPushNotificationsAsync();
+      const enabled = result.status === "granted";
+
+      setNotificationPreference({
+        enabled,
+        permissionStatus: result.status,
+        expoPushToken: result.expoPushToken,
+      });
+
+      if (token) {
+        await updateNotificationSettings({
+          token,
+          notificationsEnabled: enabled,
+          permissionStatus: result.status,
+          ...(result.expoPushToken
+            ? { expoPushToken: result.expoPushToken }
+            : {}),
+        });
+      }
+
+      if (enabled) {
+        await scheduleRecipePrepReminderAsync(savedRecipe.title);
+        setNotificationMessage("Kujtesa u aktivizua për këtë recetë.");
+        setShowNotificationPrompt(false);
+      } else {
+        setNotificationMessage(
+          "Njoftimet nuk u aktivizuan. Mund t’i hapësh më vonë te Cilësimet.",
+        );
+      }
+    } catch (error) {
+      setNotificationPreference({
+        enabled: false,
+        permissionStatus: "error",
+      });
+      setNotificationMessage(
+        error instanceof Error
+          ? error.message
+          : "Nuk mundëm t’i aktivizonim kujtesat tani.",
+      );
+    } finally {
+      setNotificationLoading(false);
+    }
+  };
+
+  const skipNotificationPrompt = () => {
+    Haptics.selectionAsync();
+    setNotificationPreference({
+      enabled: false,
+      permissionStatus: "skipped",
+    });
+    setShowNotificationPrompt(false);
   };
 
   function applyParsedRecipe(parsed: ParsedRecipe | null) {
@@ -918,6 +1005,11 @@ export default function ImportRecipeScreen() {
                   } as any)
                 }
                 onBack={() => router.back()}
+                showNotificationPrompt={showNotificationPrompt}
+                notificationLoading={notificationLoading}
+                notificationMessage={notificationMessage}
+                onEnableNotifications={enableNotificationsAfterSave}
+                onSkipNotifications={skipNotificationPrompt}
               />
             ) : shouldShowImporting ? (
               <ImportingPanel draft={activeDraft} />
@@ -1955,11 +2047,21 @@ function SavedCard({
   source,
   onView,
   onBack,
+  showNotificationPrompt,
+  notificationLoading,
+  notificationMessage,
+  onEnableNotifications,
+  onSkipNotifications,
 }: {
   title: string;
   source: "account" | "guest";
   onView: () => void;
   onBack: () => void;
+  showNotificationPrompt: boolean;
+  notificationLoading: boolean;
+  notificationMessage: string | null;
+  onEnableNotifications: () => void;
+  onSkipNotifications: () => void;
 }) {
   const theme = useTheme();
 
@@ -1993,6 +2095,59 @@ function SavedCard({
       >
         {title}
       </ThemedText>
+
+      {showNotificationPrompt ? (
+        <ThemedView
+          style={[
+            styles.savedNotificationPrompt,
+            {
+              backgroundColor: theme.surface,
+              borderColor: theme.borderLight,
+            },
+          ]}
+        >
+          <ThemedText style={styles.savedNotificationTitle}>
+            Do të të kujtojmë kur është koha për përgatitje?
+          </ThemedText>
+
+          <ThemedText
+            color="secondary"
+            align="center"
+            style={styles.savedNotificationSubtitle}
+          >
+            Do të shfaqet kërkesa zyrtare e telefonit vetëm nëse vazhdon.
+          </ThemedText>
+
+          <ThemedView transparent style={styles.savedNotificationActions}>
+            <ThemedButton
+              title="Aktivizo kujtesat"
+              onPress={onEnableNotifications}
+              loading={notificationLoading}
+              variant="secondary"
+            />
+
+            <Pressable onPress={onSkipNotifications} hitSlop={10}>
+              <ThemedText
+                color="secondary"
+                style={styles.savedNotificationSkip}
+              >
+                Jo tani
+              </ThemedText>
+            </Pressable>
+          </ThemedView>
+        </ThemedView>
+      ) : null}
+
+      {notificationMessage ? (
+        <ThemedText
+          selectable
+          color="secondary"
+          align="center"
+          style={styles.savedNotificationMessage}
+        >
+          {notificationMessage}
+        </ThemedText>
+      ) : null}
 
       <ThemedView transparent style={styles.savedActions}>
         <ThemedButton
@@ -2532,6 +2687,43 @@ const styles = StyleSheet.create({
     maxWidth: 300,
     fontSize: 17,
     lineHeight: 24,
+    fontWeight: "700",
+  },
+  savedNotificationPrompt: {
+    width: "100%",
+    borderRadius: Radius.xxl,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: Spacing.lg,
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  savedNotificationTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: 17,
+    lineHeight: 23,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  savedNotificationSubtitle: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "700",
+  },
+  savedNotificationActions: {
+    width: "100%",
+    marginTop: Spacing.sm,
+    gap: Spacing.md,
+    alignItems: "center",
+  },
+  savedNotificationSkip: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "800",
+  },
+  savedNotificationMessage: {
+    maxWidth: 310,
+    fontSize: 13,
+    lineHeight: 19,
     fontWeight: "700",
   },
   savedActions: {

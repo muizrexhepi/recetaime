@@ -1,9 +1,7 @@
 import { IconBell, IconChefHatFilled } from "@tabler/icons-react-native";
-import Constants from "expo-constants";
 import * as Haptics from "expo-haptics";
-import * as Notifications from "expo-notifications";
 import { useState } from "react";
-import { Platform, Pressable, StyleSheet } from "react-native";
+import { Pressable, StyleSheet } from "react-native";
 
 import { OnboardingHeading } from "@/components/onboarding/onboarding-heading";
 import { ThemedButton } from "@/components/ui/themed-button";
@@ -12,17 +10,9 @@ import { ThemedText } from "@/components/ui/themed-text";
 import { ThemedView } from "@/components/ui/themed-view";
 import { Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
+import { registerForPushNotificationsAsync } from "@/lib/notifications";
 import { useGuestStore } from "@/stores/guest-store";
 import { useOnboardingFlowStore } from "@/stores/onboarding-flow-store";
-
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
 
 export function NotificationPrimerStep() {
   const theme = useTheme();
@@ -128,46 +118,6 @@ export function NotificationPrimerStep() {
       ) : null}
     </ThemedView>
   );
-}
-
-async function registerForPushNotificationsAsync() {
-  if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync("meal-reminders", {
-      name: "Kujtesa vaktesh",
-      importance: Notifications.AndroidImportance.DEFAULT,
-      vibrationPattern: [0, 180, 120, 180],
-      lightColor: "#E94B35",
-    });
-  }
-
-  const existingPermission = await Notifications.getPermissionsAsync();
-  let status = existingPermission.status;
-
-  if (status !== "granted") {
-    const requestedPermission = await Notifications.requestPermissionsAsync();
-    status = requestedPermission.status;
-  }
-
-  if (status !== "granted") {
-    return { status };
-  }
-
-  const projectId =
-    Constants.expoConfig?.extra?.eas?.projectId ??
-    Constants.easConfig?.projectId;
-
-  if (!projectId) {
-    throw new Error("Mungon Expo projectId për push notifications.");
-  }
-
-  const expoPushToken = (
-    await Notifications.getExpoPushTokenAsync({ projectId })
-  ).data;
-
-  return {
-    status,
-    expoPushToken,
-  };
 }
 
 const styles = StyleSheet.create({

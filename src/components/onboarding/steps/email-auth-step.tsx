@@ -1,16 +1,14 @@
-import { IconLockFilled, IconMailFilled } from "@tabler/icons-react-native";
+import { IconChevronRight } from "@tabler/icons-react-native";
 import * as Haptics from "expo-haptics";
 import { useState } from "react";
-import { Pressable, StyleSheet, TextInput } from "react-native";
+import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
-import { OnboardingHeading } from "@/components/onboarding/onboarding-heading";
 import { ThemedButton } from "@/components/ui/themed-button";
-import { ThemedCard } from "@/components/ui/themed-card";
 import { ThemedText } from "@/components/ui/themed-text";
 import { ThemedView } from "@/components/ui/themed-view";
-import { Radius, Spacing } from "@/constants/theme";
-import { useTheme } from "@/hooks/use-theme";
+import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useCompleteOnboarding } from "@/hooks/use-complete-onboarding";
+import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/providers/auth-provider";
 
 type EmailMode = "register" | "login";
@@ -26,6 +24,10 @@ export function EmailAuthStep() {
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const t = theme as any;
+  const paper = t.paper ?? "#FFFFFF";
+  const textSecondary = t.textSecondary ?? "#756F66";
 
   const canSubmit =
     email.trim().length > 3 &&
@@ -64,117 +66,119 @@ export function EmailAuthStep() {
     }
   };
 
+  const switchMode = (nextMode: EmailMode) => {
+    void Haptics.selectionAsync();
+    setMode(nextMode);
+    setMessage(null);
+  };
+
   return (
     <ThemedView transparent style={styles.screen}>
-      <ThemedView
-        style={[
-          styles.iconHalo,
-          { backgroundColor: theme.primarySoft, borderColor: theme.border },
-        ]}
-      >
-        <IconMailFilled size={28} color={theme.primary} />
-      </ThemedView>
+      <View style={styles.main}>
+        <View style={styles.header}>
+          <ThemedText style={styles.title}>
+            {mode === "register" ? "Krijo llogari" : "Hyr me email"}
+          </ThemedText>
+          <ThemedText style={[styles.subtitle, { color: textSecondary }]}>
+            {mode === "register"
+              ? "Ruaji recetat në cloud."
+              : "Vazhdo aty ku e le."}
+          </ThemedText>
+        </View>
 
-      <OnboardingHeading
-        title={mode === "register" ? "Krijo llogarinë." : "Mirë se u ktheve."}
-        subtitle="Emaili ruan recetat dhe preferencat e tua."
-      />
-
-      <ThemedCard
-        variant="outline"
-        style={styles.card}
-        contentStyle={styles.cardContent}
-      >
-        <ThemedView
-          style={[styles.segment, { backgroundColor: theme.cardMuted }]}
-        >
+        <View style={[styles.segment, { backgroundColor: theme.cardMuted }]}>
           <ModeButton
             title="Regjistrohu"
             active={mode === "register"}
-            onPress={() => setMode("register")}
+            onPress={() => switchMode("register")}
           />
           <ModeButton
             title="Hyr"
             active={mode === "login"}
-            onPress={() => setMode("login")}
+            onPress={() => switchMode("login")}
           />
-        </ThemedView>
+        </View>
 
-        {mode === "register" ? (
+        <View style={styles.form}>
+          {mode === "register" ? (
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              placeholder="Emri"
+              placeholderTextColor={theme.textTertiary}
+              autoCapitalize="words"
+              textContentType="name"
+              style={[
+                styles.input,
+                {
+                  borderColor: theme.border,
+                  color: theme.text,
+                  backgroundColor: paper,
+                },
+              ]}
+            />
+          ) : null}
+
           <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder="Emri"
+            value={email}
+            onChangeText={setEmail}
+            placeholder="Email"
             placeholderTextColor={theme.textTertiary}
-            autoCapitalize="words"
-            textContentType="name"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoComplete="email"
+            textContentType="emailAddress"
             style={[
               styles.input,
               {
                 borderColor: theme.border,
                 color: theme.text,
-                backgroundColor: theme.backgroundElement,
+                backgroundColor: paper,
               },
             ]}
           />
-        ) : null}
 
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          placeholder="Email"
-          placeholderTextColor={theme.textTertiary}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoComplete="email"
-          textContentType="emailAddress"
-          style={[
-            styles.input,
-            {
-              borderColor: theme.border,
-              color: theme.text,
-              backgroundColor: theme.backgroundElement,
-            },
-          ]}
-        />
+          <TextInput
+            value={password}
+            onChangeText={setPassword}
+            placeholder="Fjalëkalimi"
+            placeholderTextColor={theme.textTertiary}
+            secureTextEntry
+            autoCapitalize="none"
+            autoComplete={mode === "register" ? "new-password" : "password"}
+            textContentType={mode === "register" ? "newPassword" : "password"}
+            style={[
+              styles.input,
+              {
+                borderColor: theme.border,
+                color: theme.text,
+                backgroundColor: paper,
+              },
+            ]}
+          />
 
-        <TextInput
-          value={password}
-          onChangeText={setPassword}
-          placeholder="Fjalëkalimi"
-          placeholderTextColor={theme.textTertiary}
-          secureTextEntry
-          autoCapitalize="none"
-          autoComplete={mode === "register" ? "new-password" : "password"}
-          textContentType={mode === "register" ? "newPassword" : "password"}
-          style={[
-            styles.input,
-            {
-              borderColor: theme.border,
-              color: theme.text,
-              backgroundColor: theme.backgroundElement,
-            },
-          ]}
-        />
-
-        <ThemedButton
-          title={mode === "register" ? "Krijo llogari" : "Hyr me email"}
-          onPress={handleSubmit}
-          loading={loading}
-          disabled={!canSubmit}
-          leftIcon={<IconLockFilled size={18} color="#FFFFFF" />}
-        />
+          <ThemedButton
+            title={mode === "register" ? "Krijo llogari" : "Hyr"}
+            onPress={handleSubmit}
+            loading={loading}
+            disabled={!canSubmit}
+            rightIcon={<IconChevronRight size={18} color="#FFFFFF" />}
+            style={styles.control}
+          />
+        </View>
 
         {message ? (
-          <ThemedText themeColor="danger" style={styles.message}>
+          <ThemedText selectable themeColor="danger" style={styles.message}>
             {message}
           </ThemedText>
         ) : null}
-      </ThemedCard>
+      </View>
 
-      <ThemedText themeColor="textSecondary" style={styles.privacy}>
-        Fjalëkalimi duhet të ketë të paktën 8 karaktere.
-      </ThemedText>
+      <View style={styles.footer}>
+        <ThemedText style={[styles.footerText, { color: textSecondary }]}>
+          Fjalëkalimi duhet të ketë të paktën 8 karaktere.
+        </ThemedText>
+      </View>
     </ThemedView>
   );
 }
@@ -214,33 +218,35 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.xl,
+    paddingTop: Spacing.lg,
     paddingBottom: Spacing.xl,
-    justifyContent: "center",
+    justifyContent: "space-between",
   },
-  iconHalo: {
-    width: 62,
-    height: 62,
-    borderRadius: Radius.xl,
-    borderWidth: 1,
-    alignSelf: "center",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: Spacing.lg,
+  main: {
+    gap: Spacing.xl,
   },
-  card: {
-    marginTop: Spacing.xl,
+  header: {
+    gap: Spacing.sm,
   },
-  cardContent: {
-    gap: Spacing.md,
-    padding: Spacing.lg,
+  title: {
+    fontFamily: Fonts.bold,
+    fontSize: 36,
+    lineHeight: 41,
+    fontWeight: "900",
+    letterSpacing: 0,
+  },
+  subtitle: {
+    maxWidth: 300,
+    fontSize: 17,
+    lineHeight: 23,
+    fontWeight: "700",
   },
   segment: {
-    minHeight: 44,
+    height: 48,
     borderRadius: Radius.lg,
-    padding: Spacing.xs,
+    padding: 4,
     flexDirection: "row",
-    gap: Spacing.xs,
+    gap: 4,
   },
   modeButton: {
     flex: 1,
@@ -253,25 +259,32 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontWeight: "900",
   },
+  form: {
+    gap: Spacing.md,
+  },
   input: {
-    minHeight: 54,
+    height: 58,
     borderWidth: 1,
     borderRadius: Radius.lg,
     paddingHorizontal: Spacing.md,
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "700",
+  },
+  control: {
+    minHeight: 58,
   },
   message: {
     fontSize: 14,
     lineHeight: 20,
     fontWeight: "700",
-    textAlign: "center",
   },
-  privacy: {
-    marginTop: Spacing.lg,
+  footer: {
+    alignItems: "center",
+  },
+  footerText: {
     fontSize: 13,
     lineHeight: 19,
-    fontWeight: "600",
+    fontWeight: "700",
     textAlign: "center",
   },
 });

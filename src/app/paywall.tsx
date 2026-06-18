@@ -1,7 +1,7 @@
 import { IconCheck, IconX } from "@tabler/icons-react-native";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Linking,
@@ -18,6 +18,13 @@ import { ThemedText } from "@/components/ui/themed-text";
 import { ThemedView } from "@/components/ui/themed-view";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
+import {
+  isRevenueCatPurchaseCancelled,
+  loadRevenueCatPlans,
+  purchaseRevenueCatPackage,
+} from "@/lib/revenuecat";
+import { useAuth } from "@/providers/auth-provider";
+import type { PurchasesPackage } from "react-native-purchases";
 
 type PlanId = "monthly" | "yearly";
 
@@ -29,6 +36,7 @@ type Plan = {
   helper: string;
   badge?: string;
   hasTrial: boolean;
+  package?: PurchasesPackage;
 };
 
 const TERMS_URL = "https://recetaime.com/terms";
@@ -57,8 +65,13 @@ const PLANS: Plan[] = [
 export default function PaywallScreen() {
   const router = useRouter();
   const theme = useTheme();
+  const auth = useAuth();
 
   const [selectedPlan, setSelectedPlan] = useState<PlanId>("yearly");
+  const [plans, setPlans] = useState<Plan[]>(PLANS);
+  const [plansMessage, setPlansMessage] = useState<string | null>(null);
+  const [loadingPlans, setLoadingPlans] = useState(true);
+  const [purchasing, setPurchasing] = useState(false);
 
   const t = theme as any;
   const surface = t.surface ?? "#F7F6F2";
@@ -67,11 +80,72 @@ export default function PaywallScreen() {
   const textTertiary = t.textTertiary ?? "#9B938A";
 
   const selected = useMemo(
-    () => PLANS.find((plan) => plan.id === selectedPlan) ?? PLANS[1],
-    [selectedPlan],
+    () => plans.find((plan) => plan.id === selectedPlan) ?? plans[1],
+    [plans, selectedPlan],
   );
 
   const isYearly = selectedPlan === "yearly";
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPlans() {
+      setLoadingPlans(true);
+      setPlansMessage(null);
+
+      try {
+        const revenueCatPlans = await loadRevenueCatPlans(auth.user?._id);
+
+        if (cancelled) return;
+
+        if (!revenueCatPlans) {
+          setPlansMessage(
+            "RevenueCat nuk është konfiguruar ende për këtë build.",
+          );
+          setPlans(PLANS);
+          return;
+        }
+
+        setPlans([
+          {
+            ...PLANS[0],
+            price:
+              revenueCatPlans.monthly?.product.priceString ?? PLANS[0].price,
+            helper: revenueCatPlans.monthly
+              ? "Pagesë mujore, anulo kurdo"
+              : PLANS[0].helper,
+            package: revenueCatPlans.monthly,
+          },
+          {
+            ...PLANS[1],
+            price:
+              revenueCatPlans.yearly?.product.pricePerMonthString ??
+              revenueCatPlans.yearly?.product.priceString ??
+              PLANS[1].price,
+            helper: revenueCatPlans.yearly
+              ? `${revenueCatPlans.yearly.product.priceString}/vit pas provës`
+              : PLANS[1].helper,
+            package: revenueCatPlans.yearly,
+          },
+        ]);
+      } catch {
+        if (!cancelled) {
+          setPlansMessage(
+            "Nuk mundëm t’i lexonim planet tani. Provo përsëri pas pak.",
+          );
+          setPlans(PLANS);
+        }
+      } finally {
+        if (!cancelled) setLoadingPlans(false);
+      }
+    }
+
+    void loadPlans();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.user?._id]);
 
   const handleClose = () => {
     void Haptics.selectionAsync();
@@ -84,18 +158,56 @@ export default function PaywallScreen() {
     router.replace("/(tabs)/cookbooks" as any);
   };
 
-  const handleRestore = () => {
+  const handleRestore = async () => {
     void Haptics.selectionAsync();
-    Alert.alert("Rikthe blerjet", "Kjo do të lidhet me RevenueCat.");
+
+    try {
+      const state = await auth.restorePurchases();
+      Alert.alert(
+        state?.hasActiveSubscription ? "U rikthye" : "U kontrollua",
+        state?.hasActiveSubscription
+          ? "Abonimi yt Pro është aktiv."
+          : "Nuk gjetëm abonim aktiv për këtë llogari.",
+      );
+    } catch {
+      Alert.alert("Nuk u rikthyen blerjet", "Provo përsëri pas pak.");
+    }
   };
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
+    if (purchasing) return;
+
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    // TODO:
-    // selectedPlan === "yearly" -> purchase yearly package with trial
-    // selectedPlan === "monthly" -> purchase monthly package without trial
-    router.back();
+    if (!selected.package) {
+      Alert.alert(
+        "Plani nuk është gati",
+        plansMessage ?? "Nuk gjetëm plan aktiv në RevenueCat.",
+      );
+      return;
+    }
+
+    setPurchasing(true);
+
+    try {
+      const state = await purchaseRevenueCatPackage(
+        selected.package,
+        auth.user?._id,
+      );
+
+      await auth.refreshSubscription();
+
+      if (state.hasActiveSubscription) {
+        Alert.alert("Pro u aktivizua", "Tani ke importime pa limit.");
+        router.back();
+      }
+    } catch (error) {
+      if (!isRevenueCatPurchaseCancelled(error)) {
+        Alert.alert("Blerja nuk u krye", "Provo përsëri pas pak.");
+      }
+    } finally {
+      setPurchasing(false);
+    }
   };
 
   const openUrl = (url: string) => {
@@ -202,7 +314,7 @@ export default function PaywallScreen() {
           </View>
 
           <View style={styles.plans}>
-            {PLANS.map((plan) => (
+            {plans.map((plan) => (
               <PlanCard
                 key={plan.id}
                 plan={plan}
@@ -214,6 +326,16 @@ export default function PaywallScreen() {
               />
             ))}
           </View>
+
+          {plansMessage ? (
+            <ThemedText
+              selectable
+              align="center"
+              style={[styles.setupMessage, { color: textSecondary }]}
+            >
+              {plansMessage}
+            </ThemedText>
+          ) : null}
         </ScrollView>
 
         <View
@@ -227,17 +349,24 @@ export default function PaywallScreen() {
         >
           <Pressable
             onPress={handleContinue}
+            disabled={purchasing || loadingPlans}
             style={({ pressed }) => [
               styles.cta,
               {
                 backgroundColor: theme.primary,
-                opacity: pressed ? 0.88 : 1,
+                opacity: purchasing || loadingPlans ? 0.55 : pressed ? 0.88 : 1,
                 transform: [{ scale: pressed ? 0.985 : 1 }],
               },
             ]}
           >
             <ThemedText style={styles.ctaText}>
-              {isYearly ? "Nis provën 7-ditore" : "Vazhdo me Pro"}
+              {purchasing
+                ? "Duke hapur pagesën..."
+                : loadingPlans
+                  ? "Duke ngarkuar planet..."
+                  : isYearly
+                    ? "Nis provën 7-ditore"
+                    : "Vazhdo me Pro"}
             </ThemedText>
           </Pressable>
 
@@ -552,7 +681,7 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   switcherContent: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   timeline: {
     flex: 1,
@@ -624,6 +753,12 @@ const styles = StyleSheet.create({
   plans: {
     marginTop: Spacing.lg ?? 20,
     gap: Spacing.sm,
+  },
+  setupMessage: {
+    marginTop: Spacing.md,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: "700",
   },
   planCard: {
     minHeight: 76,

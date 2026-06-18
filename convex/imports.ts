@@ -1400,6 +1400,11 @@ async function extractInstagramContent(
                 thumbnailUrl: extracted.thumbnailUrl ?? best.thumbnailUrl,
                 sourceAuthor: extracted.sourceAuthor ?? best.sourceAuthor,
             };
+        } else if (!best.thumbnailUrl && extracted.thumbnailUrl) {
+            best = {
+                ...best,
+                thumbnailUrl: extracted.thumbnailUrl,
+            };
         }
     }
 
@@ -1456,9 +1461,11 @@ function extractInstagramTextFromHtml(html: string) {
     const quotedDescription = extractInstagramCaptionFromDescription(description);
     const jsonText = extractInstagramJsonCaption(html);
     const visibleText = extractInstagramVisibleText(html);
+    const jsonThumbnailUrl = extractInstagramJsonThumbnail(html);
     const thumbnailUrl =
         extractMetaContent(html, "og:image") ??
-        extractMetaContent(html, "twitter:image");
+        extractMetaContent(html, "twitter:image") ??
+        jsonThumbnailUrl;
     const sourceAuthor =
         extractMetaContent(html, "instapp:owner_user_id") ??
         title?.match(/^([^(@|]+)(?:\(| on Instagram| •)/i)?.[1]?.trim();
@@ -1746,6 +1753,97 @@ function extractInstagramJsonCaption(html: string) {
         .map(cleanInstagramText)
         .filter((candidate) => candidate.length > 20)
         .sort((a, b) => b.length - a.length)[0];
+}
+
+function extractInstagramJsonThumbnail(html: string) {
+    const candidates: string[] = [];
+    const ldJsonBlocks = html.matchAll(
+        /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
+    );
+
+    for (const block of ldJsonBlocks) {
+        const payload = decodeHtml(block[1] ?? "").trim();
+
+        try {
+            collectInstagramJsonMediaCandidates(JSON.parse(payload), candidates);
+        } catch {
+            continue;
+        }
+    }
+
+    const scripts = html.match(/<script\b[^>]*>([\s\S]*?)<\/script>/gi) ?? [];
+
+    for (const script of scripts) {
+        const text = decodeHtml(script.replace(/<script\b[^>]*>/i, "").replace(/<\/script>/i, ""));
+        if (!/(display_url|thumbnail_src|thumbnail_url|image_versions2|cdninstagram|fbcdn)/i.test(text)) {
+            continue;
+        }
+
+        for (const match of text.matchAll(/"(?:display_url|thumbnail_src|thumbnail_url|profile_pic_url|url)"\s*:\s*"((?:\\.|[^"\\]){20,3000})"/g)) {
+            const value = normalizeInstagramImageUrl(safeJsonString(match[1]));
+            if (value) candidates.push(value);
+        }
+
+        for (const match of text.matchAll(/\\+"(?:display_url|thumbnail_src|thumbnail_url|profile_pic_url|url)\\+"\s*:\s*\\+"((?:\\\\.|[^"\\]){20,3000})\\+"/g)) {
+            const value = normalizeInstagramImageUrl(
+                safeJsonString(match[1].replace(/\\"/g, '"')),
+            );
+            if (value) candidates.push(value);
+        }
+    }
+
+    return [...new Set(candidates)]
+        .sort((a, b) => scoreInstagramImageUrl(b) - scoreInstagramImageUrl(a))[0];
+}
+
+function collectInstagramJsonMediaCandidates(value: unknown, candidates: string[]) {
+    if (Array.isArray(value)) {
+        for (const item of value) collectInstagramJsonMediaCandidates(item, candidates);
+        return;
+    }
+
+    if (!isRecord(value)) return;
+
+    for (const [key, nested] of Object.entries(value)) {
+        if (
+            typeof nested === "string" &&
+            /^(display_url|thumbnail_src|thumbnail_url|url|image|contentUrl)$/i.test(key)
+        ) {
+            const imageUrl = normalizeInstagramImageUrl(nested);
+            if (imageUrl) candidates.push(imageUrl);
+        }
+
+        if (Array.isArray(nested) || isRecord(nested)) {
+            collectInstagramJsonMediaCandidates(nested, candidates);
+        }
+    }
+}
+
+function normalizeInstagramImageUrl(value: string) {
+    const decoded = decodeHtml(value)
+        .replace(/\\u0026/g, "&")
+        .replace(/\\\//g, "/")
+        .trim();
+
+    if (!/^https?:\/\//i.test(decoded)) return undefined;
+    if (!/(cdninstagram|fbcdn|instagram|\.jpg|\.jpeg|\.png|\.webp)/i.test(decoded)) {
+        return undefined;
+    }
+
+    try {
+        const url = new URL(decoded);
+        return url.toString();
+    } catch {
+        return undefined;
+    }
+}
+
+function scoreInstagramImageUrl(value: string) {
+    let score = value.length;
+    if (/s\d+x\d+/.test(value)) score += 50;
+    if (/\.jpg|\.jpeg|\.png|\.webp/i.test(value)) score += 100;
+    if (/profile_pic/i.test(value)) score -= 500;
+    return score;
 }
 
 function bestInstagramCandidate(candidates: (string | undefined)[]) {

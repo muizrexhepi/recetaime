@@ -3,7 +3,6 @@ import {
   IconChevronRight,
   IconCrown,
   IconHelp,
-  IconLanguage,
   IconMail,
   IconRotateClockwise,
   IconShieldLock,
@@ -12,6 +11,7 @@ import {
 } from "@tabler/icons-react-native";
 import * as Haptics from "expo-haptics";
 import { Stack, useRouter } from "expo-router";
+import { useMutation } from "convex/react";
 import { useState } from "react";
 import {
   Alert,
@@ -26,9 +26,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ThemedText } from "@/components/ui/themed-text";
 import { colors, Fonts, Radius, Shadows, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
+import { registerForPushNotificationsAsync } from "@/lib/notifications";
 import { useAuth } from "@/providers/auth-provider";
 import { useGuestStore } from "@/stores/guest-store";
 import { useOnboardingFlowStore } from "@/stores/onboarding-flow-store";
+import { api } from "../../../convex/_generated/api";
 
 const SUPPORT_EMAIL = "support@recetaime.com";
 const PRIVACY_URL = "https://recetaime.com/privacy";
@@ -44,12 +46,21 @@ export default function SettingsScreen() {
   );
 
   const resetGuest = useGuestStore((state) => state.resetGuest);
+  const notificationsEnabled = useGuestStore(
+    (state) => state.notificationsEnabled,
+  );
+  const setNotificationPreference = useGuestStore(
+    (state) => state.setNotificationPreference,
+  );
   const resetFlow = useOnboardingFlowStore((state) => state.resetFlow);
+  const updateNotificationSettings = useMutation(
+    api.auth.updateNotificationSettings,
+  );
 
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
 
   const t = theme as any;
-  const surface = t.surface ?? "#F7F6F2";
   const paper = t.paper ?? "#FFFFFF";
   const borderLight = t.borderLight ?? "rgba(39,31,23,0.08)";
   const textSecondary = t.textSecondary ?? "#756F66";
@@ -82,28 +93,50 @@ export default function SettingsScreen() {
     );
   };
 
-  const handleLanguage = () => {
+  const handleNotifications = async () => {
+    if (notificationsLoading) return;
+
     void Haptics.selectionAsync();
+    setNotificationsLoading(true);
 
-    Alert.alert("Gjuha", "Aktualisht aplikacioni është në shqip.", [
-      { text: "Në rregull" },
-    ]);
-  };
+    try {
+      const result = await registerForPushNotificationsAsync();
+      const enabled = result.status === "granted";
 
-  const handleNotifications = () => {
-    void Haptics.selectionAsync();
+      setNotificationPreference({
+        enabled,
+        permissionStatus: result.status,
+        expoPushToken: result.expoPushToken,
+      });
 
-    Alert.alert(
-      "Kujtesat",
-      "Njoftimet do t’i lidhësh me planin e vakteve. Për tani mund të hapësh cilësimet e pajisjes.",
-      [
-        { text: "Anulo", style: "cancel" },
-        {
-          text: "Hap cilësimet",
-          onPress: () => void Linking.openSettings(),
-        },
-      ],
-    );
+      if (auth?.token) {
+        await updateNotificationSettings({
+          token: auth.token,
+          notificationsEnabled: enabled,
+          permissionStatus: result.status,
+          ...(result.expoPushToken
+            ? { expoPushToken: result.expoPushToken }
+            : {}),
+        });
+      }
+
+      Alert.alert(
+        enabled ? "Kujtesat u aktivizuan" : "Kujtesat nuk u aktivizuan",
+        enabled
+          ? "Do të mund të marrësh kujtesa për recetat dhe përgatitjen."
+          : "Mund t’i lejosh më vonë nga cilësimet e telefonit.",
+        enabled
+          ? [{ text: "Në rregull" }]
+          : [
+              { text: "Anulo", style: "cancel" },
+              { text: "Hap cilësimet", onPress: () => void Linking.openSettings() },
+            ],
+      );
+    } catch {
+      Alert.alert("Nuk u aktivizuan kujtesat", "Provo përsëri pas pak.");
+    } finally {
+      setNotificationsLoading(false);
+    }
   };
 
   const handleSupport = () => {
@@ -132,21 +165,24 @@ export default function SettingsScreen() {
     try {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
+      /*
+        Clear local guest/onboarding state before auth is cleared.
+        Otherwise the root guard can briefly see "signed out + completed guest"
+        and keep the user inside tabs.
+      */
+      resetFlow();
+      resetGuest();
+
       if (typeof auth?.signOut === "function") {
         await auth.signOut();
       } else if (typeof auth?.logout === "function") {
         await auth.logout();
       }
 
-      /*
-        Important:
-        Your root guard redirects completed guests back into tabs.
-        So after logout, clear the guest/onboarding state too.
-      */
-      resetFlow();
-      resetGuest();
-
-      router.replace("/onboarding" as any);
+      router.dismissAll();
+      setTimeout(() => {
+        router.replace("/onboarding" as any);
+      }, 0);
     } catch {
       Alert.alert("Nuk dole dot nga llogaria", "Provo përsëri pas pak.");
 
@@ -157,16 +193,22 @@ export default function SettingsScreen() {
   const handleLogout = () => {
     void Haptics.selectionAsync();
 
-    Alert.alert("Dil nga llogaria?", "Do të kthehesh te ekrani fillestar.", [
-      { text: "Anulo", style: "cancel" },
-      {
-        text: "Dil",
-        style: "destructive",
-        onPress: () => {
-          void performLogout();
+    Alert.alert(
+      hasAccount ? "Dil nga llogaria?" : "Dil nga profili mysafir?",
+      hasAccount
+        ? "Do të kthehesh te ekrani fillestar."
+        : "Do të kthehesh te onboarding dhe të dhënat lokale të mysafirit do të pastrohen.",
+      [
+        { text: "Anulo", style: "cancel" },
+        {
+          text: "Dil",
+          style: "destructive",
+          onPress: () => {
+            void performLogout();
+          },
         },
-      },
-    ]);
+      ],
+    );
   };
 
   const handleDeleteAccount = () => {
@@ -324,25 +366,14 @@ export default function SettingsScreen() {
 
           <SettingsSection title="Preferencat">
             <SettingsItem
-              icon={
-                <IconLanguage size={21} color="#FFFFFF" strokeWidth={2.25} />
-              }
-              iconBackground="#4F8FEA"
-              title="Gjuha"
-              value="Shqip"
-              onPress={handleLanguage}
-              paper={paper}
-              borderLight={borderLight}
-            />
-
-            <SettingsItem
               icon={<IconBell size={21} color="#FFFFFF" strokeWidth={2.25} />}
               iconBackground="#EF4A38"
-              title="Kujtesat"
-              value="Joaktive"
+              title={notificationsLoading ? "Duke hapur..." : "Kujtesat"}
+              value={notificationsEnabled ? "Aktive" : "Joaktive"}
               onPress={handleNotifications}
               paper={paper}
               borderLight={borderLight}
+              disabled={notificationsLoading}
               last
             />
           </SettingsSection>
@@ -380,25 +411,37 @@ export default function SettingsScreen() {
             />
           </SettingsSection>
 
-          {hasAccount ? (
-            <SettingsSection title="Llogaria">
-              <SettingsItem
-                icon={
-                  <IconShieldLock
-                    size={21}
-                    color="#FFFFFF"
-                    strokeWidth={2.25}
-                  />
-                }
-                iconBackground="#D9422F"
-                title={isLoggingOut ? "Duke dalë..." : "Dil nga llogaria"}
-                titleColor="#D9422F"
-                onPress={handleLogout}
-                disabled={isLoggingOut}
-                paper={paper}
-                borderLight={borderLight}
-              />
+          <SettingsSection title="Llogaria">
+            <SettingsItem
+              icon={
+                <IconShieldLock
+                  size={21}
+                  color="#FFFFFF"
+                  strokeWidth={2.25}
+                />
+              }
+              iconBackground="#D9422F"
+              title={
+                isLoggingOut
+                  ? "Duke dalë..."
+                  : hasAccount
+                    ? "Dil nga llogaria"
+                    : "Dil nga profili mysafir"
+              }
+              subtitle={
+                hasAccount
+                  ? undefined
+                  : "Kthehu te onboarding dhe nis nga fillimi."
+              }
+              titleColor="#D9422F"
+              onPress={handleLogout}
+              disabled={isLoggingOut}
+              paper={paper}
+              borderLight={borderLight}
+              last={!hasAccount}
+            />
 
+            {hasAccount ? (
               <SettingsItem
                 icon={
                   <IconTrash size={21} color="#FFFFFF" strokeWidth={2.25} />
@@ -412,8 +455,8 @@ export default function SettingsScreen() {
                 borderLight={borderLight}
                 last
               />
-            </SettingsSection>
-          ) : null}
+            ) : null}
+          </SettingsSection>
 
           <ThemedText style={[styles.version, { color: textTertiary }]}>
             Version 1.0.0

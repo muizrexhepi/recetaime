@@ -1,5 +1,6 @@
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { useFonts } from "expo-font";
+import * as Notifications from "expo-notifications";
 import { Stack, usePathname, useRouter } from "expo-router";
 import { ShareIntentProvider, useShareIntentContext } from "expo-share-intent";
 import * as SplashScreen from "expo-splash-screen";
@@ -41,6 +42,33 @@ function RootNavigation() {
 
   const onboardingComplete =
     (isAuthenticated && user?.onboardingCompleted) || guestOnboardingCompleted;
+
+  useEffect(() => {
+    const redirectFromNotification = (
+      notification: Notifications.Notification,
+    ) => {
+      const url = notification.request.content.data?.url;
+
+      if (typeof url === "string" && url.startsWith("/")) {
+        router.push(url as any);
+      }
+    };
+
+    const lastResponse = Notifications.getLastNotificationResponse();
+    if (lastResponse?.notification) {
+      redirectFromNotification(lastResponse.notification);
+    }
+
+    const subscription = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        redirectFromNotification(response.notification);
+      },
+    );
+
+    return () => {
+      subscription.remove();
+    };
+  }, [router]);
 
   useEffect(() => {
     if (!hasShareIntent || !onboardingComplete) return;

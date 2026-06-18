@@ -1,21 +1,14 @@
-import {
-  IconBrandGoogleFilled,
-  IconChevronRight,
-  IconCloudLock,
-  IconMailFilled,
-  IconReceipt,
-} from "@tabler/icons-react-native";
+import { IconChevronRight, IconMailFilled } from "@tabler/icons-react-native";
 import * as AppleAuthentication from "expo-apple-authentication";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 
-import { OnboardingHeading } from "@/components/onboarding/onboarding-heading";
 import { ThemedButton } from "@/components/ui/themed-button";
 import { ThemedText } from "@/components/ui/themed-text";
 import { ThemedView } from "@/components/ui/themed-view";
-import { Radius, Shadows, Spacing } from "@/constants/theme";
+import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useCompleteOnboarding } from "@/hooks/use-complete-onboarding";
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/providers/auth-provider";
@@ -31,6 +24,10 @@ export function CreateAccountStep() {
   const [appleAvailable, setAppleAvailable] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState<LoadingAction>(null);
+
+  const t = theme as any;
+  const borderLight = t.borderLight ?? theme.border;
+  const textSecondary = t.textSecondary ?? "#756F66";
 
   useEffect(() => {
     AppleAuthentication.isAvailableAsync()
@@ -88,169 +85,97 @@ export function CreateAccountStep() {
 
   return (
     <ThemedView transparent style={styles.screen}>
-      <ThemedView transparent style={styles.hero}>
-        <ThemedView
-          style={[
-            styles.heroOrb,
-            {
-              backgroundColor: theme.primarySoft,
-              borderColor: theme.border,
-            },
+      <View style={styles.main}>
+        <View style={styles.header}>
+          <ThemedText style={styles.title}>
+            Ruaji recetat përgjithmonë
+          </ThemedText>
+          <ThemedText style={[styles.subtitle, { color: textSecondary }]}>
+            Sinkronizo recetat në çdo pajisje.
+          </ThemedText>
+        </View>
+
+        <View style={styles.actions}>
+          {appleAvailable ? (
+            <View style={styles.appleWrap}>
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={
+                  AppleAuthentication.AppleAuthenticationButtonType.CONTINUE
+                }
+                buttonStyle={
+                  AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
+                }
+                cornerRadius={Radius.lg}
+                onPress={handleApple}
+                style={styles.appleButton}
+              />
+              {loading === "apple" ? (
+                <View style={styles.loadingOverlay} />
+              ) : null}
+            </View>
+          ) : null}
+
+          {appleAvailable ? (
+            <View style={styles.dividerRow}>
+              <View
+                style={[styles.dividerLine, { backgroundColor: borderLight }]}
+              />
+              <ThemedText style={[styles.dividerText, { color: textSecondary }]}>
+                ose
+              </ThemedText>
+              <View
+                style={[styles.dividerLine, { backgroundColor: borderLight }]}
+              />
+            </View>
+          ) : null}
+
+          <ThemedButton
+            title="Vazhdo me email"
+            variant={appleAvailable ? "outline" : "primary"}
+            onPress={() => router.push("/onboarding/email-auth" as any)}
+            leftIcon={
+              <IconMailFilled
+                size={20}
+                color={appleAvailable ? theme.text : "#FFFFFF"}
+              />
+            }
+            rightIcon={
+              <IconChevronRight
+                size={19}
+                color={appleAvailable ? theme.textSecondary : "#FFFFFF"}
+                strokeWidth={2.7}
+              />
+            }
+            style={styles.control}
+          />
+
+          {message ? (
+            <ThemedText selectable themeColor="danger" style={styles.message}>
+              {message}
+            </ThemedText>
+          ) : null}
+        </View>
+      </View>
+
+      <View style={styles.footer}>
+        <Pressable
+          onPress={handleGuest}
+          disabled={loading === "guest"}
+          hitSlop={14}
+          style={({ pressed }) => [
+            styles.guestLink,
+            { opacity: loading === "guest" ? 0.48 : pressed ? 0.62 : 1 },
           ]}
         >
-          <ThemedView
-            style={[
-              styles.recipeCard,
-              {
-                backgroundColor: theme.paper,
-                borderColor: theme.borderStrong,
-              },
-            ]}
-          >
-            <ThemedView
-              style={[styles.iconTile, { backgroundColor: theme.primarySoft }]}
-            >
-              <IconReceipt size={25} color={theme.primary} strokeWidth={2.6} />
-            </ThemedView>
-            <ThemedView transparent style={styles.heroLines}>
-              <ThemedView
-                style={[styles.heroLineStrong, { backgroundColor: theme.text }]}
-              />
-              <ThemedView
-                style={[
-                  styles.heroLineMuted,
-                  { backgroundColor: theme.borderStrong },
-                ]}
-              />
-            </ThemedView>
-          </ThemedView>
+          <ThemedText style={[styles.guestText, { color: textSecondary }]}>
+            Vazhdo si mysafir
+          </ThemedText>
+        </Pressable>
 
-          <ThemedView
-            style={[
-              styles.lockBadge,
-              {
-                backgroundColor: theme.paper,
-                borderColor: theme.border,
-              },
-            ]}
-          >
-            <IconCloudLock size={20} color={theme.primary} strokeWidth={2.5} />
-          </ThemedView>
-        </ThemedView>
-      </ThemedView>
-
-      <OnboardingHeading
-        title="Ruaji recetat përgjithmonë."
-        subtitle="Krijo llogari që të mos humbin kur ndërron telefon."
-      />
-
-      <ThemedView transparent style={styles.actions}>
-        {appleAvailable ? (
-          <ThemedView transparent style={styles.nativeButtonWrap}>
-            <AppleAuthentication.AppleAuthenticationButton
-              buttonType={
-                AppleAuthentication.AppleAuthenticationButtonType.CONTINUE
-              }
-              buttonStyle={
-                AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
-              }
-              cornerRadius={Radius.lg}
-              onPress={handleApple}
-              style={styles.appleButton}
-            />
-            {loading === "apple" ? (
-              <ThemedView
-                style={[
-                  styles.loadingOverlay,
-                  { backgroundColor: "rgba(0,0,0,0.14)" },
-                ]}
-              />
-            ) : null}
-          </ThemedView>
-        ) : null}
-
-        <ThemedButton
-          title="Vazhdo me email"
-          variant={appleAvailable ? "outline" : "primary"}
-          onPress={() => router.push("/onboarding/email-auth" as any)}
-          leftIcon={
-            <IconMailFilled
-              size={20}
-              color={appleAvailable ? theme.text : "#FFFFFF"}
-            />
-          }
-          rightIcon={
-            <IconChevronRight
-              size={19}
-              color={appleAvailable ? theme.textSecondary : "#FFFFFF"}
-              strokeWidth={2.7}
-            />
-          }
-        />
-
-        <SocialVisualButton
-          title="Vazhdo me Google"
-          subtitle="Do ta lidhim më vonë"
-        />
-      </ThemedView>
-
-      {message ? (
-        <ThemedText themeColor="danger" style={styles.message}>
-          {message}
+        <ThemedText style={[styles.privacy, { color: textSecondary }]}>
+          Të dhënat e tua mbeten private.
         </ThemedText>
-      ) : null}
-
-      <Pressable
-        onPress={handleGuest}
-        disabled={loading === "guest"}
-        hitSlop={14}
-        style={({ pressed }) => [
-          styles.guestLink,
-          { opacity: loading === "guest" ? 0.48 : pressed ? 0.62 : 1 },
-        ]}
-      >
-        <ThemedText themeColor="textSecondary" style={styles.guestText}>
-          Vazhdo si mysafir
-        </ThemedText>
-      </Pressable>
-
-      <ThemedText themeColor="textSecondary" style={styles.privacy}>
-        Informacioni yt ruhet privat. Nuk e shesim të dhënat personale.
-      </ThemedText>
-    </ThemedView>
-  );
-}
-
-function SocialVisualButton({
-  title,
-  subtitle,
-}: {
-  title: string;
-  subtitle: string;
-}) {
-  const theme = useTheme();
-
-  return (
-    <ThemedView
-      style={[
-        styles.socialButton,
-        {
-          backgroundColor: theme.paper,
-          borderColor: theme.border,
-        },
-      ]}
-    >
-      <ThemedView
-        style={[styles.socialIcon, { backgroundColor: theme.cardMuted }]}
-      >
-        <IconBrandGoogleFilled size={20} color={theme.textSecondary} />
-      </ThemedView>
-      <ThemedView transparent style={styles.socialTextWrap}>
-        <ThemedText style={styles.socialText}>{title}</ThemedText>
-        <ThemedText themeColor="textTertiary" style={styles.socialSubtitle}>
-          {subtitle}
-        </ThemedText>
-      </ThemedView>
+      </View>
     </ThemedView>
   );
 }
@@ -258,73 +183,33 @@ function SocialVisualButton({
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.lg,
-    paddingBottom: Spacing.xl,
-    justifyContent: "center",
+    paddingTop: Spacing.md,
+    paddingBottom: 0,
+    justifyContent: "space-between",
   },
-  hero: {
-    alignItems: "center",
-    marginBottom: Spacing.xl,
+  main: {
+    gap: Spacing.xxl,
   },
-  heroOrb: {
-    width: 132,
-    height: 132,
-    borderRadius: Radius.xxl,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  recipeCard: {
-    width: 102,
-    minHeight: 88,
-    borderRadius: Radius.xl,
-    borderWidth: 1,
-    padding: Spacing.md,
+  header: {
     gap: Spacing.sm,
-    shadowColor: Shadows.soft.shadowColor,
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 2,
   },
-  iconTile: {
-    width: 42,
-    height: 42,
-    borderRadius: Radius.lg,
-    alignItems: "center",
-    justifyContent: "center",
+  title: {
+    fontFamily: Fonts.bold,
+    fontSize: 36,
+    lineHeight: 41,
+    fontWeight: "900",
+    letterSpacing: 0,
   },
-  heroLines: {
-    gap: Spacing.xs,
-  },
-  heroLineStrong: {
-    width: "74%",
-    height: 7,
-    borderRadius: Radius.full,
-    opacity: 0.76,
-  },
-  heroLineMuted: {
-    width: "94%",
-    height: 7,
-    borderRadius: Radius.full,
-  },
-  lockBadge: {
-    position: "absolute",
-    right: 2,
-    bottom: 6,
-    width: 42,
-    height: 42,
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
+  subtitle: {
+    maxWidth: 300,
+    fontSize: 17,
+    lineHeight: 23,
+    fontWeight: "700",
   },
   actions: {
-    marginTop: Spacing.xl,
     gap: Spacing.md,
   },
-  nativeButtonWrap: {
+  appleWrap: {
     height: 58,
     borderRadius: Radius.lg,
     overflow: "hidden",
@@ -334,64 +219,52 @@ const styles = StyleSheet.create({
     height: 58,
   },
   loadingOverlay: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
+    ...StyleSheet.absoluteFill,
+    backgroundColor: "rgba(0,0,0,0.14)",
   },
-  socialButton: {
-    minHeight: 58,
-    borderWidth: 1,
-    borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.md,
+  dividerRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.md,
+    paddingVertical: Spacing.xs,
   },
-  socialIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: Radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  socialTextWrap: {
+  dividerLine: {
     flex: 1,
-    gap: 1,
+    height: StyleSheet.hairlineWidth,
   },
-  socialText: {
-    fontSize: 16,
-    lineHeight: 21,
+  dividerText: {
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: "900",
   },
-  socialSubtitle: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: "700",
+  control: {
+    minHeight: 58,
   },
   message: {
-    marginTop: Spacing.md,
     fontSize: 14,
     lineHeight: 20,
     fontWeight: "700",
-    textAlign: "center",
+  },
+  footer: {
+    alignItems: "center",
+    gap: Spacing.xs,
   },
   guestLink: {
-    alignSelf: "center",
-    marginTop: Spacing.lg,
-    paddingVertical: Spacing.sm,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: Spacing.md,
   },
   guestText: {
     fontSize: 15,
     lineHeight: 21,
-    fontWeight: "800",
+    fontWeight: "900",
   },
   privacy: {
-    marginTop: Spacing.sm,
     fontSize: 13,
     lineHeight: 19,
-    fontWeight: "600",
+    fontFamily: Fonts.medium,
+    fontWeight: "700",
     textAlign: "center",
   },
 });

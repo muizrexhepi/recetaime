@@ -10,6 +10,11 @@ import React, {
 } from "react";
 
 import { api } from "../../convex/_generated/api";
+import {
+  getRevenueCatSubscriptionState,
+  restoreRevenueCatPurchases,
+  type RevenueCatSubscriptionState,
+} from "@/lib/revenuecat";
 
 const TOKEN_KEY = "recetaime_auth_token";
 
@@ -63,6 +68,8 @@ type AuthContextValue = {
     name?: string;
     avatarUrl?: string;
   }) => Promise<string>;
+  refreshSubscription: () => Promise<RevenueCatSubscriptionState | null>;
+  restorePurchases: () => Promise<RevenueCatSubscriptionState | null>;
   signOut: () => Promise<void>;
 };
 
@@ -88,6 +95,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     api.auth.signInWithOAuthProfile,
   );
   const signOutMutation = useMutation(api.auth.signOut);
+  const syncSubscriptionMutation = useMutation(
+    api.auth.syncSubscriptionFromRevenueCat,
+  );
 
   useEffect(() => {
     async function loadToken() {
@@ -160,6 +170,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [signOutMutation, token]);
 
+  const syncSubscription = useCallback(
+    async (state: RevenueCatSubscriptionState | null) => {
+      if (!state || !token) return state;
+
+      await syncSubscriptionMutation({
+        token,
+        revenueCatUserId: state.revenueCatUserId,
+        hasActiveSubscription: state.hasActiveSubscription,
+        subscriptionStatus: state.subscriptionStatus,
+        ...(state.productIdentifier
+          ? { productIdentifier: state.productIdentifier }
+          : {}),
+        ...(typeof state.subscriptionExpiresAt === "number"
+          ? { subscriptionExpiresAt: state.subscriptionExpiresAt }
+          : {}),
+      });
+
+      return state;
+    },
+    [syncSubscriptionMutation, token],
+  );
+
+  const refreshSubscription = useCallback(async () => {
+    const state = await getRevenueCatSubscriptionState(user?._id ?? null);
+    return await syncSubscription(state);
+  }, [syncSubscription, user?._id]);
+
+  const restorePurchases = useCallback(async () => {
+    const state = await restoreRevenueCatPurchases(user?._id ?? null);
+    return await syncSubscription(state);
+  }, [syncSubscription, user?._id]);
+
+  useEffect(() => {
+    if (!token || !user?._id) return;
+
+    refreshSubscription().catch(() => {
+      // RevenueCat may be unconfigured in local builds.
+    });
+  }, [refreshSubscription, token, user?._id]);
+
   const isLoading = !tokenLoaded || (!!token && user === undefined);
 
   const value = useMemo<AuthContextValue>(
@@ -179,12 +229,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       registerWithEmailPassword,
       signInWithEmailPassword,
       signInWithOAuthProfile,
+      refreshSubscription,
+      restorePurchases,
       signOut,
     }),
     [
       createDevUser,
       isLoading,
       registerWithEmailPassword,
+      refreshSubscription,
+      restorePurchases,
       setSession,
       signInWithEmailPassword,
       signInWithOAuthProfile,
